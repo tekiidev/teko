@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>teko — controle de IAs</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">t</div>
+        <div>
+          <div class="brand-name">teko</div>
+          <div class="brand-sub">por Felipe Oliveira</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button data-view="chat" class="active"><span class="ico">◆</span> Chat</button>
+        <button data-view="usage"><span class="ico">▤</span> Uso</button>
+        <button data-view="projects"><span class="ico">▢</span> Projetos <span class="badge" id="badge-projects">0</span></button>
+        <button data-view="bugs"><span class="ico">✕</span> Bugs <span class="badge" id="badge-bugs">0</span></button>
+        <button data-view="models"><span class="ico">◈</span> Modelos</button>
+        <button data-view="connections"><span class="ico">⚡</span> Conexões</button>
+      </nav>
+
+      <div class="side-foot">
+        <div class="row"><span><span class="dot" id="dot-status"></span> local</span><span id="side-version" class="mono">v0.1.0</span></div>
+        <div class="row"><span>semana</span><span id="side-week" class="mono">—</span></div>
+        <div class="row"><span>custo semana</span><span id="side-cost" class="mono">—</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1 id="view-title">Chat</h1>
+        <span class="spacer"></span>
+        <div class="usage-mini">
+          <span>hoje <b id="mini-today">—</b></span>
+          <span>semana <b id="mini-week">—</b></span>
+          <span>total <b id="mini-total">—</b></span>
+        </div>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
