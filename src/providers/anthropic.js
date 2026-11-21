@@ -1,13 +1,34 @@
-import { normalizeMessages, sseData, toProviderError } from './http.js';
+import { sseData, toProviderError } from './http.js';
+import { toAnthropic, toolSchemas } from './format.js';
 
-export async function anthropic({ model, system, messages, maxTokens, apiKey, baseUrl, signal, onDelta }) {
+function parseArgs(text) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+export async function anthropic({
+  model,
+  system,
+  messages,
+  maxTokens,
+  apiKey,
+  baseUrl,
+  signal,
+  onDelta,
+  tools,
+}) {
   const body = {
     model,
     max_tokens: maxTokens || 4096,
-    messages: normalizeMessages(messages),
+    messages: toAnthropic(messages, system),
     stream: true,
   };
   if (system) body.system = system;
+  if (tools?.length) body.tools = toolSchemas(tools).anthropic;
 
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/messages`, {
     method: 'POST',
@@ -24,6 +45,7 @@ export async function anthropic({ model, system, messages, maxTokens, apiKey, ba
 
   let inputTokens = 0;
   let outputTokens = 0;
+  const blocks = new Map();
 
   for await (const data of sseData(res)) {
     let event;
@@ -32,14 +54,28 @@ export async function anthropic({ model, system, messages, maxTokens, apiKey, ba
     } catch {
       continue;
     }
+
     switch (event.type) {
       case 'message_start':
         inputTokens = event.message?.usage?.input_tokens ?? inputTokens;
         outputTokens = event.message?.usage?.output_tokens ?? outputTokens;
         break;
-      case 'content_block_delta':
-        if (event.delta?.type === 'text_delta' && event.delta.text) onDelta(event.delta.text);
+      case 'content_block_start': {
+        const block = event.content_block;
+        if (block?.type === 'tool_use') {
+          blocks.set(event.index, { id: block.id, name: block.name, argsText: '' });
+        }
         break;
+      }
+      case 'content_block_delta': {
+        const delta = event.delta;
+        if (delta?.type === 'text_delta' && delta.text) onDelta(delta.text);
+        if (delta?.type === 'input_json_delta') {
+          const current = blocks.get(event.index);
+          if (current) current.argsText += delta.partial_json || '';
+        }
+        break;
+      }
       case 'message_delta':
         if (event.usage?.output_tokens != null) outputTokens = event.usage.output_tokens;
         break;
@@ -50,5 +86,13 @@ export async function anthropic({ model, system, messages, maxTokens, apiKey, ba
     }
   }
 
-  return { inputTokens, outputTokens };
+  const toolCalls = [...blocks.values()]
+    .filter((block) => block.name)
+    .map((block) => ({
+      id: block.id,
+      name: block.name,
+      args: parseArgs(block.argsText),
+    }));
+
+  return { inputTokens, outputTokens, toolCalls };
 }

@@ -79,6 +79,17 @@ function fmtCost(n) {
   return `$${v.toFixed(2)}`;
 }
 
+function highlightSnippet(text) {
+  return String(text || '')
+    .split(/(<<|>>)/)
+    .map((part) => {
+      if (part === '<<') return '<mark>';
+      if (part === '>>') return '</mark>';
+      return esc(part);
+    })
+    .join('');
+}
+
 function fmtDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -267,6 +278,20 @@ function mountChat() {
   $('#send').onclick = sendMessage;
   $('#summarize').onclick = summarizeSession;
 
+  $('#messages').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-approve],[data-deny]');
+    if (!btn) return;
+    const id = btn.dataset.approve || btn.dataset.deny;
+    const approved = Boolean(btn.dataset.approve);
+    btn.disabled = true;
+    try {
+      await api(`/api/approvals/${id}`, { method: 'POST', body: { approved } });
+    } catch (err) {
+      toast(err.message, 'err');
+      btn.disabled = false;
+    }
+  });
+
   const input = $('#composer-input');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -342,6 +367,11 @@ async function openSession(id) {
       usage: m.input_tokens || m.output_tokens ? { inputTokens: m.input_tokens, outputTokens: m.output_tokens } : null,
       cost: m.cost,
       notes: [],
+      tools: (m.meta?.tools || []).map((t) =>
+        t.status === 'pending' ? { ...t, status: 'expired' }
+        : t.status === 'running' ? { ...t, status: 'interrupted' }
+        : t,
+      ),
     }));
     $('#profile-select').value = state.chat.profileId;
     $('#model-select').value = '';
@@ -352,6 +382,36 @@ async function openSession(id) {
   } catch (err) {
     toast(err.message, 'err');
   }
+}
+
+function renderTool(tool) {
+  const labels = {
+    pending: 'aguardando você',
+    approved: 'aprovado',
+    denied: 'negado',
+    running: 'executando…',
+    ok: 'ok',
+    error: 'erro',
+    expired: 'expirado',
+    interrupted: 'interrompido',
+  };
+  const tone = tool.status === 'error' || tool.status === 'denied' ? 'bad' : tool.status === 'pending' ? 'wait' : 'good';
+  return `<div class="tool ${tone}">
+    <div class="tool-head">
+      <span class="tool-name">${esc(tool.name)}</span>
+      <span class="chip">${labels[tool.status] || tool.status}</span>
+    </div>
+    <div class="tool-preview">${esc(tool.preview || '')}</div>
+    ${tool.status === 'pending'
+      ? `<div class="tool-actions">
+           <button class="btn sm primary" data-approve="${esc(tool.id)}">Aprovar</button>
+           <button class="btn sm" data-deny="${esc(tool.id)}">Negar</button>
+         </div>`
+      : ''}
+    ${tool.output
+      ? `<details class="tool-out"><summary>saída</summary><pre>${esc(tool.output)}</pre></details>`
+      : ''}
+  </div>`;
 }
 
 function renderMessages() {
@@ -374,12 +434,14 @@ function renderMessages() {
     if (m.usage) meta.push(`<span class="chip">${fmtTokens((m.usage.inputTokens || 0) + (m.usage.outputTokens || 0))} tok</span>`);
     if (m.cost) meta.push(`<span class="chip">${fmtCost(m.cost)}</span>`);
     if (m.notes?.length) meta.push(...m.notes.map((n) => `<span class="chip amber">${esc(n)}</span>`));
+    const tools = m.tools?.length ? `<div class="tool-list">${m.tools.map(renderTool).join('')}</div>` : '';
     return `
       <div class="msg ${isUser ? 'user' : 'assistant'}">
         <div class="avatar">${isUser ? 'VC' : 'IA'}</div>
         <div class="bubble">
           <div class="who">${isUser ? 'você' : esc(m.model || 'teko')} ${m.streaming ? '<span class="chip">gerando…</span>' : ''}</div>
           <div class="content ${m.streaming ? 'typing' : ''}">${m.error ? `<span style="color:var(--red)">${esc(m.error)}</span>` : md(m.content)}</div>
+          ${tools}
           ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}
         </div>
       </div>`;
@@ -435,7 +497,7 @@ async function sendMessage() {
   input.value = '';
   input.style.height = 'auto';
   state.chat.messages.push({ role: 'user', content: text });
-  const assistant = { role: 'assistant', content: '', streaming: true, notes: [], model: null, usage: null, cost: 0 };
+  const assistant = { role: 'assistant', content: '', streaming: true, notes: [], model: null, usage: null, cost: 0, tools: [] };
   state.chat.messages.push(assistant);
   state.chat.streaming = true;
   updateSendBtn();
@@ -463,7 +525,7 @@ async function sendMessage() {
           scheduleMessages();
         }
         if (ev.type === 'fallback') {
-          if (ev.reset) assistant.content = '';
+          if (typeof ev.truncate === 'number') assistant.content = assistant.content.slice(0, ev.truncate);
           assistant.notes.push(`↯ ${ev.fromLabel}: ${ev.reason}`);
           scheduleMessages();
         }
@@ -471,7 +533,39 @@ async function sendMessage() {
           assistant.model = ev.label;
           assistant.usage = ev.usage;
           assistant.cost = ev.cost;
+          if (typeof ev.text === 'string') assistant.content = ev.text;
+          if (Array.isArray(ev.tools)) assistant.tools = ev.tools;
           assistant.notes = assistant.notes.filter((n) => !n.startsWith('→'));
+          scheduleMessages();
+        }
+        if (ev.type === 'tool_call') {
+          assistant.tools.push({
+            id: ev.id,
+            name: ev.name,
+            preview: ev.preview,
+            requiresApproval: ev.requiresApproval,
+            status: ev.requiresApproval ? 'pending' : 'running',
+            output: '',
+          });
+          scheduleMessages();
+        }
+        if (ev.type === 'tool_decision') {
+          const tool = assistant.tools.find((t) => t.id === ev.id);
+          if (tool) tool.status = ev.approved ? 'approved' : 'denied';
+          scheduleMessages();
+        }
+        if (ev.type === 'tool_running') {
+          const tool = assistant.tools.find((t) => t.id === ev.id);
+          if (tool) tool.status = 'running';
+          scheduleMessages();
+        }
+        if (ev.type === 'tool_result') {
+          const tool = assistant.tools.find((t) => t.id === ev.id);
+          if (tool) {
+            tool.status = ev.ok ? 'ok' : 'error';
+            tool.output = ev.output || '';
+          }
+          scheduleMessages();
         }
         if (ev.type === 'error') assistant.error = ev.message;
         if (ev.type === 'end') assistant.streaming = false;
@@ -643,9 +737,10 @@ async function renderProjectDetail(project) {
     box.innerHTML = '<div class="empty">Nenhum projeto. Crie um pra guardar contexto, decisões e bugs.</div>';
     return;
   }
-  const [decisions, memory] = await Promise.all([
+  const [decisions, memory, index] = await Promise.all([
     api(`/api/decisions?projectId=${encodeURIComponent(project.id)}`),
     api(`/api/memory?projectId=${encodeURIComponent(project.id)}`),
+    api(`/api/search/status?projectId=${encodeURIComponent(project.id)}`).catch(() => null),
   ]);
 
   box.innerHTML = `
@@ -667,6 +762,28 @@ async function renderProjectDetail(project) {
           <button class="btn primary sm" id="save-project">Salvar</button>
           <span class="dim small">O caminho do repo entra no contexto via <code>git ls-files</code>.</span>
         </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-head">
+        <h2>Busca no projeto</h2><span class="grow"></span>
+        <span class="chip ${index?.indexed ? 'lime' : ''}" id="index-chip">
+          ${index?.indexed ? `${index.chunks} trechos` : 'não indexado'}
+        </span>
+        <button class="btn sm" id="reindex">Reindexar</button>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <input id="p-search" placeholder="Onde fica…? (código, decisões, bugs, docs)" style="flex:1">
+          <button class="btn primary sm" id="do-search">Buscar</button>
+        </div>
+        <div class="dim small" style="margin-top:6px" id="search-meta">
+          ${index?.indexed
+            ? `${index.files} arquivos · ${index.chunks} trechos · atualizado ${fmtDate(index.indexed_at)}`
+            : 'Indexe o repositório pra buscar por relevância e alimentar o chat automaticamente.'}
+        </div>
+        <div id="search-results" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -777,6 +894,49 @@ async function renderProjectDetail(project) {
     });
     await loadBootstrap();
     renderProjectDetail(state.projects.find((p) => p.id === project.id));
+  };
+
+  const doSearch = async () => {
+    const q = $('#p-search').value.trim();
+    if (!q) return;
+    const box = $('#search-results');
+    box.innerHTML = '<div class="dim small">buscando…</div>';
+    try {
+      const out = await api(`/api/search?q=${encodeURIComponent(q)}&projectId=${encodeURIComponent(project.id)}&limit=12`);
+      box.innerHTML = out.results.length
+        ? out.results.map((hit) => `
+            <div class="hit">
+              <div class="hit-head">
+                <span class="chip">${esc(hit.kind)}</span>
+                <span class="hit-loc">${esc(hit.path || hit.title || '')}${hit.startLine ? `:${hit.startLine}-${hit.endLine}` : ''}</span>
+              </div>
+              <div class="hit-body">${highlightSnippet(hit.snippet)}</div>
+            </div>`).join('')
+        : '<div class="dim small">Nada encontrado.</div>';
+    } catch (err) {
+      box.innerHTML = `<div class="dim small">${esc(err.message)}</div>`;
+    }
+  };
+  $('#do-search').onclick = doSearch;
+  $('#p-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSearch();
+  });
+  $('#reindex').onclick = async () => {
+    const btn = $('#reindex');
+    btn.disabled = true;
+    btn.textContent = 'Indexando…';
+    try {
+      const out = await api('/api/search/index', { method: 'POST', body: { projectId: project.id } });
+      $('#index-chip').className = 'chip lime';
+      $('#index-chip').textContent = `${out.chunks} trechos`;
+      $('#search-meta').textContent = `${out.files} arquivos · ${out.chunks} trechos · ${out.ms} ms`;
+      toast('Índice atualizado', 'ok');
+    } catch (err) {
+      toast(err.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Reindexar';
+    }
   };
 
   $('#import-drive').onclick = () => importFromDrive(project.id);

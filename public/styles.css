@@ -297,6 +297,30 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .msg .content a { text-decoration: underline; }
 .msg .meta { margin-top: 7px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
+.tool-list { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.tool {
+  border: 1px solid var(--line-2); border-left: 2px solid var(--dim);
+  border-radius: 9px; background: rgba(255,255,255,0.02);
+  padding: 8px 10px; font-family: var(--mono); font-size: 11.5px;
+}
+.tool.good { border-left-color: var(--lime); }
+.tool.bad { border-left-color: var(--red); }
+.tool.wait { border-left-color: var(--amber); background: rgba(255,176,32,0.05); }
+.tool-head { display: flex; align-items: center; gap: 8px; }
+.tool-name { color: var(--lime); font-weight: 600; }
+.tool-preview {
+  margin-top: 5px; color: var(--muted); white-space: pre-wrap;
+  overflow-wrap: anywhere; max-height: 110px; overflow: auto;
+}
+.tool-actions { margin-top: 8px; display: flex; gap: 6px; }
+.tool-out { margin-top: 6px; }
+.tool-out summary { cursor: pointer; color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tool-out pre {
+  margin: 6px 0 0; padding: 8px; max-height: 220px; overflow: auto;
+  background: #05070a; border: 1px solid var(--line); border-radius: 7px;
+  font-size: 11px; line-height: 1.5; white-space: pre-wrap;
+}
+
 .typing::after { content: "▍"; color: var(--lime); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
@@ -432,3 +456,18 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 11.5px;
   .sessions-rail { display: none; }
   .proj-layout { grid-template-columns: 1fr; }
 }
+
+/* busca no projeto */
+.hit {
+  border: 1px solid var(--line); border-radius: 9px;
+  padding: 9px 11px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.02);
+}
+.hit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hit-loc { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.hit-body {
+  margin-top: 6px; font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.55; color: var(--muted); white-space: pre-wrap;
+  overflow-wrap: anywhere; max-height: 160px; overflow: auto;
+}
+.hit-body mark { background: var(--lime-soft); color: var(--lime); border-radius: 3px; padding: 0 2px; }

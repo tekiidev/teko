@@ -9,7 +9,8 @@ Zero dependências: Node 24 + `node:sqlite` + `fetch`. Sem build, sem `npm insta
 ```bash
 cd ~/Documents/teki-projects/teko
 cp .env.example .env      # opcional: preencha as chaves que você tem
-node src/server.js        # ou: npm start
+node src/server.js        # ou: npm start (npm run dev recarrega sozinho)
+npm run index             # reindexa os projetos com caminho local
 ```
 
 Abre `http://127.0.0.1:4780`.
@@ -19,6 +20,8 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 ## O que já funciona
 
 - **Chat com roteamento por perfil** — `código`, `projeto/arquitetura`, `documentação`, `revisão`, `bug`.
+- **Ferramentas no chat** — o modelo lista e lê arquivos, busca com regex, escreve, edita e roda comandos. Escrita e execução pedem **aprovação** na própria bolha.
+- **Busca no projeto** — índice local FTS5 (BM25) sobre código, docs, memória, decisões e bugs. Os melhores trechos entram automaticamente no contexto da conversa.
 - **Fallback automático** — 429, cota esgotada, chave inválida, 5xx, timeout: o modelo entra em cooldown e a fila continua.
 - **Escolha manual + fallback** — se você escolher um modelo e ele cair, os seguintes do perfil continuam valendo.
 - **Uso** — tokens e custo por sessão, hoje, semana, mês e total; série de 14 dias; quebra por modelo e provider.
@@ -38,8 +41,11 @@ src/
   server.js             HTTP + SSE + rotas
   db.js                 schema SQLite + seed
   catalog.js            providers, modelos, perfis e preços iniciais
-  router.js             fila, fallback, cooldown, orçamento
+  router.js             fila, fallback, cooldown, orçamento e loop de ferramentas
   context.js            monta o system prompt do projeto
+  approvals.js          aprovações pendentes de ferramentas
+  search-index.js       índice FTS5 + busca BM25 + trechos pro prompt
+  tools/                fs | search | shell | catálogo de ferramentas
   usage.js              agregações de tokens/custo
   sync.js               descoberta de modelos por provider
   providers/            anthropic | openai-compatible | google
@@ -58,7 +64,32 @@ src/
    - `5xx`/rede → 3 min
 4. Em sucesso, limpa o cooldown e registra uso.
 
-O cliente recebe eventos SSE (`attempt`, `delta`, `fallback`, `done`, `error`) e mostra a troca de modelo na própria bolha.
+O cliente recebe eventos SSE (`attempt`, `delta`, `fallback`, `tool_call`, `tool_decision`, `tool_running`, `tool_result`, `done`, `error`) e mostra a troca de modelo e as ferramentas na própria bolha.
+
+## Ferramentas no chat
+
+Com um projeto que tem caminho local, o modelo ganha seis ferramentas:
+
+| Ferramenta | Aprovação | O que faz |
+| --- | --- | --- |
+| `list_files` | não | árvore de arquivos (profundidade 1–6) |
+| `read_file` | não | lê arquivo com números de linha |
+| `grep` | não | regex no conteúdo, com filtro de glob |
+| `search_project` | não | busca por relevância no índice do projeto |
+| `write_file` | **sim** | cria/sobrescreve arquivo |
+| `edit_file` | **sim** | substitui trecho exato |
+| `run_command` | **sim** | shell dentro do projeto (timeout 120s) |
+
+Tudo fica preso ao caminho do projeto: `../` e caminhos externos são bloqueados. Comandos destrutivos óbvios (`rm -rf /`, `sudo`, `mkfs`, `dd if=`) são recusados antes da aprovação. Aprovações expiram em 5 minutos; se você fechar a aba, a execução é cancelada.
+
+## Busca local
+
+O índice usa **FTS5 do próprio SQLite** (`unicode61`, sem acento), com BM25 e trechos destacados. Sem embeddings, sem serviço externo, sem dependência.
+
+- Indexa código e docs do repo + memória, decisões e bugs do projeto.
+- `POST /api/search/index` reindexa; o índice também é criado ao salvar o caminho do projeto.
+- Na conversa, os 5 trechos mais relevantes da sua mensagem entram no system prompt (RAG local).
+- A aba **Projetos** tem busca com `arquivo:linha` e trecho destacado.
 
 ## API
 
@@ -68,6 +99,11 @@ O cliente recebe eventos SSE (`attempt`, `delta`, `fallback`, `done`, `error`) e
 | POST | `/api/chat` | SSE: conversa com fallback |
 | GET | `/api/route?profileId=&modelId=` | prévia da fila e motivos de skip |
 | GET | `/api/usage` | agregações de uso |
+| GET | `/api/search?q=&projectId=` | busca no índice (BM25) |
+| GET | `/api/search/status?projectId=` | estado do índice |
+| POST | `/api/search/index` | reindexar projeto |
+| GET | `/api/approvals` | aprovações pendentes |
+| POST | `/api/approvals/:id` | aprovar/negar (`{ approved }`) |
 | GET/POST/PATCH/DELETE | `/api/sessions…` | conversas |
 | POST | `/api/sessions/:id/summarize` | resumo da sessão |
 | GET/POST/PATCH/DELETE | `/api/projects…` | projetos |
@@ -108,11 +144,11 @@ O teko é um serviço local. Pra reaproveitar o roteamento dentro do OpenCode, o
 
 ## Próximos passos sugeridos
 
-- Ferramentas no chat (ler/escrever arquivos, rodar comando) com aprovação.
-- Busca semântica nos projetos (embeddings locais).
+- Embeddings locais (Ollama) como segunda perna da busca, mantendo o FTS5 como fallback.
 - Regras de roteamento por intenção (detectar review/bug automaticamente).
 - Webhooks: bug criado → abre issue no GitHub.
 - Criptografia das chaves em repouso (hoje ficam no SQLite local).
+- Diff visual antes de aprovar escrita/edição.
 
 ## Reset
 

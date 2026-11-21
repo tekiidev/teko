@@ -31,7 +31,7 @@ if (fs.existsSync(envPath)) {
 export const PORT = Number(process.env.PORT || 4780);
 export const HOST = process.env.HOST || '127.0.0.1';
 export const DB_PATH = path.join(DATA_DIR, 'teko.db');
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 
 // Migra o banco da versão anterior (orquestrador.db) sem perder nada.
 const legacyDb = path.join(DATA_DIR, 'orquestrador.db');

@@ -2,6 +2,8 @@ import { db, getModel, getProvider, getSetting, safeJson } from './db.js';
 import { ADAPTERS } from './providers/index.js';
 import { env } from './config.js';
 import { tokensSince, windowStart } from './usage.js';
+import { createApproval, resolveApproval } from './approvals.js';
+import { getTool, executeTool, previewFor } from './tools/index.js';
 
 export function resolveKey(provider) {
   if (!provider) return null;
@@ -183,9 +185,70 @@ function makeQueue() {
   };
 }
 
+async function waitApproval(approval, signal) {
+  if (!signal) return approval.promise;
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      resolveApproval(approval.id, false);
+      resolve(false);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    approval.promise.then((value) => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    });
+  });
+}
+
+async function* attemptModel({
+  model,
+  provider,
+  adapter,
+  conversation,
+  system,
+  tools,
+  signal,
+  timeoutMs,
+  maxTokens,
+}) {
+  const queue = makeQueue();
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(new Error('timeout do provider')), timeoutMs);
+
+  let text = '';
+  const promise = adapter({
+    model: model.model,
+    system,
+    messages: conversation,
+    maxTokens,
+    apiKey: resolveKey(provider),
+    baseUrl: provider.base_url,
+    signal: controller.signal,
+    tools,
+    onDelta: (delta) => {
+      text += delta;
+      queue.push({ type: 'delta', text: delta });
+    },
+  })
+    .then((result) => ({ ok: true, ...result }))
+    .catch((error) => ({ ok: false, error }))
+    .finally(() => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      queue.close();
+    });
+
+  for await (const event of queue) yield event;
+  const result = await promise;
+  return result.ok ? { ...result, text } : result;
+}
+
 /**
- * Executa a conversa com fallback automático.
- * Emite eventos: attempt | delta | fallback | done | error | aborted.
+ * Executa a conversa com fallback automático e loop de ferramentas.
+ * Eventos: attempt | delta | fallback | tool_call | tool_decision | tool_running |
+ *          tool_result | done | error | aborted
  */
 export async function* runChat({
   profileId = 'code',
@@ -194,10 +257,15 @@ export async function* runChat({
   messages,
   signal,
   maxTokens = 4096,
+  tools = null,
+  projectPath = null,
+  projectId = null,
+  sessionId = null,
 }) {
   const cfg = getSetting('router', {});
   const maxAttempts = Number(cfg.maxAttempts || 6);
   const timeoutMs = Number(cfg.requestTimeoutMs || 180000);
+  const maxRounds = Math.max(1, Math.min(Number(cfg.maxToolRounds || 8), 20));
 
   const plan = planRoute({ profileId, modelId });
   const usable = plan.filter((c) => c.status === 'ready').slice(0, maxAttempts);
@@ -212,16 +280,50 @@ export async function* runChat({
     return;
   }
 
-  for (const candidate of usable) {
+  const activeTools = tools?.length && projectPath ? tools : null;
+  const conversation = messages.map((message) => ({ ...message }));
+  const toolLog = [];
+
+  let modelIndex = 0;
+  let rounds = 0;
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCost = 0;
+  let fullText = '';
+  let last = null;
+
+  while (rounds <= maxRounds) {
     if (signal?.aborted) {
       yield { type: 'aborted' };
+      return;
+    }
+
+    const candidate = usable[modelIndex];
+    if (!candidate) {
+      yield {
+        type: 'error',
+        message: 'Todos os modelos da fila falharam. Veja o cooldown na aba Modelos.',
+        candidates: plan,
+      };
       return;
     }
 
     const model = getModel(candidate.modelId);
     const provider = getProvider(model.provider_id);
     const adapter = ADAPTERS[provider.kind];
-    const apiKey = resolveKey(provider);
+
+    if (!adapter) {
+      markFailure(model.id, new Error(`adapter "${provider.kind}" não implementado`));
+      yield {
+        type: 'fallback',
+        from: model.id,
+        fromLabel: model.label,
+        reason: 'adapter não implementado',
+        truncate: fullText.length,
+      };
+      modelIndex += 1;
+      continue;
+    }
 
     yield {
       type: 'attempt',
@@ -230,81 +332,151 @@ export async function* runChat({
       providerId: provider.id,
       providerLabel: provider.label,
       order: candidate.order,
+      round: rounds + 1,
+      tools: Boolean(activeTools),
     };
 
-    if (!adapter) {
-      markFailure(model.id, new Error(`adapter "${provider.kind}" não implementado`));
-      yield { type: 'fallback', from: model.id, reason: 'adapter não implementado', reset: false };
+    const outcome = yield* attemptModel({
+      model,
+      provider,
+      adapter,
+      conversation,
+      system,
+      tools: activeTools,
+      signal,
+      timeoutMs,
+      maxTokens,
+    });
+
+    if (!outcome.ok) {
+      if (signal?.aborted) {
+        yield { type: 'aborted' };
+        return;
+      }
+      markFailure(model.id, outcome.error);
+      yield {
+        type: 'fallback',
+        from: model.id,
+        fromLabel: model.label,
+        reason: describeError(outcome.error),
+        detail: String(outcome.error?.message || outcome.error).slice(0, 300),
+        truncate: fullText.length,
+      };
+      modelIndex += 1;
       continue;
     }
 
-    const queue = makeQueue();
-    const controller = new AbortController();
-    const onAbort = () => controller.abort();
-    signal?.addEventListener('abort', onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(new Error('timeout do provider')), timeoutMs);
+    clearHealth(model.id);
+    totalInput += outcome.inputTokens || 0;
+    totalOutput += outcome.outputTokens || 0;
+    totalCost +=
+      ((outcome.inputTokens || 0) / 1_000_000) * model.price_in +
+      ((outcome.outputTokens || 0) / 1_000_000) * model.price_out;
+    if (outcome.text) fullText += (fullText ? '\n\n' : '') + outcome.text;
+    last = { model, provider };
 
-    let text = '';
-    const promise = adapter({
-      model: model.model,
-      system,
-      messages,
-      maxTokens,
-      apiKey,
-      baseUrl: provider.base_url,
-      signal: controller.signal,
-      onDelta: (delta) => {
-        text += delta;
-        queue.push({ type: 'delta', text: delta });
-      },
-    })
-      .then((usage) => ({ ok: true, usage }))
-      .catch((error) => ({ ok: false, error }))
-      .finally(() => {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
-        queue.close();
-      });
-
-    for await (const event of queue) yield event;
-    const outcome = await promise;
-
-    if (outcome.ok) {
-      clearHealth(model.id);
-      const cost =
-        (outcome.usage.inputTokens / 1_000_000) * model.price_in +
-        (outcome.usage.outputTokens / 1_000_000) * model.price_out;
+    const calls = outcome.toolCalls || [];
+    if (!calls.length) {
       yield {
         type: 'done',
         modelId: model.id,
         providerId: provider.id,
         label: model.label,
-        usage: outcome.usage,
-        cost,
-        text,
+        usage: { inputTokens: totalInput, outputTokens: totalOutput },
+        cost: totalCost,
+        text: fullText,
+        tools: toolLog,
       };
       return;
     }
 
-    if (signal?.aborted) {
-      yield { type: 'aborted' };
-      return;
+    conversation.push({
+      role: 'assistant',
+      content: outcome.text || '',
+      toolCalls: calls,
+    });
+
+    for (const call of calls) {
+      if (signal?.aborted) {
+        yield { type: 'aborted' };
+        return;
+      }
+
+      const tool = getTool(call.name);
+      if (!tool) {
+        conversation.push({
+          role: 'tool',
+          toolCallId: call.id,
+          name: call.name,
+          content: `ferramenta desconhecida: ${call.name}`,
+        });
+        continue;
+      }
+
+      const args = call.args && typeof call.args === 'object' ? call.args : {};
+      const preview = previewFor(call.name, args);
+      const approval = tool.requiresApproval
+        ? createApproval({ sessionId, tool: call.name, args, preview })
+        : null;
+      const eventId = approval?.id || call.id;
+
+      yield {
+        type: 'tool_call',
+        id: eventId,
+        callId: call.id,
+        name: call.name,
+        args,
+        preview,
+        requiresApproval: Boolean(approval),
+      };
+
+      if (approval) {
+        const approved = await waitApproval(approval, signal);
+        yield { type: 'tool_decision', id: approval.id, callId: call.id, approved };
+        if (!approved) {
+          const denied = 'Ação negada pelo usuário.';
+          conversation.push({ role: 'tool', toolCallId: call.id, name: call.name, content: denied });
+          toolLog.push({ id: eventId, name: call.name, status: 'denied', preview });
+          continue;
+        }
+      }
+
+      yield { type: 'tool_running', id: eventId, callId: call.id, name: call.name };
+      const result = await executeTool(call.name, args, { root: projectPath, projectId });
+      const output = String(result.output || '');
+      const forModel = output.slice(0, 12000);
+
+      yield {
+        type: 'tool_result',
+        id: eventId,
+        callId: call.id,
+        name: call.name,
+        ok: Boolean(result.ok),
+        output: output.slice(0, 4000),
+      };
+
+      toolLog.push({
+        id: eventId,
+        name: call.name,
+        status: result.ok ? 'ok' : 'error',
+        preview,
+        output: output.slice(0, 4000),
+      });
+
+      conversation.push({
+        role: 'tool',
+        toolCallId: call.id,
+        name: call.name,
+        content: forModel,
+      });
     }
 
-    markFailure(model.id, outcome.error);
-    yield {
-      type: 'fallback',
-      from: model.id,
-      fromLabel: model.label,
-      reason: describeError(outcome.error),
-      detail: String(outcome.error?.message || outcome.error).slice(0, 300),
-      reset: text.length > 0,
-    };
+    rounds += 1;
   }
 
   yield {
     type: 'error',
-    message: 'Todos os modelos da fila falharam. Veja o cooldown na aba Modelos.',
-    candidates: plan,
+    message: `Limite de ${maxRounds} rodadas de ferramentas atingido. Peça pra continuar de onde parou.`,
+    text: fullText,
   };
 }

@@ -20,6 +20,9 @@ import { buildSystemPrompt } from './context.js';
 import { syncModels } from './sync.js';
 import * as google from './connectors/google.js';
 import * as figma from './connectors/figma.js';
+import { toolDefs } from './tools/index.js';
+import { listApprovals, resolveApproval } from './approvals.js';
+import { indexProject, indexStatus, search, searchForPrompt, ensureIndex } from './search-index.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -194,7 +197,23 @@ async function handleChat(req, res) {
     if (!res.writableEnded) controller.abort();
   });
 
-  const system = buildSystemPrompt({ projectId: session.project_id, profileId });
+  const project = session.project_id
+    ? db.prepare('SELECT * FROM projects WHERE id = ?').get(session.project_id)
+    : null;
+  const projectPath = project?.path && fs.existsSync(project.path) ? project.path : null;
+  const tools = projectPath ? toolDefs() : null;
+
+  let retrieved = '';
+  if (project?.id) {
+    try {
+      if (projectPath) ensureIndex(project.id);
+      retrieved = searchForPrompt(project.id, text, { limit: 5 });
+    } catch (err) {
+      console.error('[busca]', err.message);
+    }
+  }
+
+  const system = buildSystemPrompt({ projectId: session.project_id, profileId, retrieved });
 
   let acc = '';
   let final = null;
@@ -207,11 +226,16 @@ async function handleChat(req, res) {
       system,
       messages: history,
       signal: controller.signal,
+      tools,
+      projectPath,
+      sessionId: session.id,
     })) {
       if (event.type === 'delta') acc += event.text;
-      if (event.type === 'fallback' && event.reset) acc = '';
       if (event.type === 'attempt') lastModel = event.modelId;
-      if (event.type === 'done') final = event;
+      if (event.type === 'done') {
+        final = event;
+        if (typeof event.text === 'string') acc = event.text;
+      }
       send(event.type, event);
     }
   } catch (err) {
@@ -233,7 +257,7 @@ async function handleChat(req, res) {
       final.usage?.inputTokens || 0,
       final.usage?.outputTokens || 0,
       cost,
-      JSON.stringify({ label: final.label }),
+      JSON.stringify({ label: final.label, tools: final.tools || [] }),
       nowIso(),
     );
 
@@ -341,6 +365,49 @@ async function dispatch(req, res) {
   }
 
   if (resource === 'chat' && method === 'POST') return handleChat(req, res);
+
+  if (resource === 'search') {
+    if (method === 'GET' && !id) {
+      const q = url.searchParams.get('q') || '';
+      const projectId = url.searchParams.get('projectId') || null;
+      const kind = url.searchParams.get('kind') || null;
+      const limit = Number(url.searchParams.get('limit') || 10);
+      if (!q.trim()) return json(res, 200, { query: q, results: [], total: 0 });
+      return json(res, 200, search(q, { projectId, kind, limit }));
+    }
+
+    if (method === 'GET' && id === 'status') {
+      const projectId = url.searchParams.get('projectId');
+      if (!projectId) return json(res, 400, { error: 'projectId obrigatório' });
+      return json(res, 200, indexStatus(projectId));
+    }
+
+    if (method === 'POST' && id === 'index') {
+      const body = await readJson(req);
+      const projectId = body.projectId || url.searchParams.get('projectId');
+      if (!projectId) return json(res, 400, { error: 'projectId obrigatório' });
+      try {
+        return json(res, 200, indexProject(projectId));
+      } catch (err) {
+        return json(res, 400, { error: String(err.message || err) });
+      }
+    }
+
+    if (method === 'DELETE' && id === 'index') {
+      const projectId = url.searchParams.get('projectId');
+      if (!projectId) return json(res, 400, { error: 'projectId obrigatório' });
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  if (resource === 'approvals') {
+    if (method === 'GET') return json(res, 200, { pending: listApprovals() });
+    if (method === 'POST' && id) {
+      const body = await readJson(req);
+      const ok = resolveApproval(id, body.approved !== false);
+      return json(res, ok ? 200 : 404, { ok });
+    }
+  }
 
   if (resource === 'sessions') {
     if (method === 'POST' && id && sub === 'summarize') {
@@ -462,6 +529,15 @@ async function dispatch(req, res) {
         JSON.stringify(body.stack || []),
         nowIso(),
       );
+      if (body.path) {
+        setImmediate(() => {
+          try {
+            indexProject(projectId);
+          } catch (err) {
+            console.error('[índice]', err.message);
+          }
+        });
+      }
       return json(res, 201, db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId));
     }
     if (method === 'PATCH' && id) {
@@ -481,6 +557,15 @@ async function dispatch(req, res) {
       if (!fields.length) return json(res, 400, { error: 'nada pra atualizar' });
       params.push(id);
       db.prepare(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+      if ('path' in body && body.path) {
+        setImmediate(() => {
+          try {
+            indexProject(id);
+          } catch (err) {
+            console.error('[índice]', err.message);
+          }
+        });
+      }
       return json(res, 200, db.prepare('SELECT * FROM projects WHERE id = ?').get(id));
     }
     if (method === 'DELETE' && id) {

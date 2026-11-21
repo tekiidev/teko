@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { db, getSetting, safeJson } from './db.js';
 
-const MAX_CONTEXT_CHARS = 14000;
+const MAX_CONTEXT_CHARS = 22000;
 
 function clip(text, n) {
   if (!text) return '';
@@ -126,7 +126,7 @@ export function projectContext(projectId) {
   return parts.join('\n\n');
 }
 
-export function buildSystemPrompt({ projectId = null, profileId = 'code' } = {}) {
+export function buildSystemPrompt({ projectId = null, profileId = 'code', retrieved = '' } = {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   const chunks = [];
 
@@ -139,6 +139,8 @@ export function buildSystemPrompt({ projectId = null, profileId = 'code' } = {})
     const ctx = projectContext(projectId);
     if (ctx) chunks.push(ctx);
   }
+
+  if (retrieved) chunks.push(retrieved);
 
   chunks.push(
     `## Sessão\nData: ${new Date().toLocaleString('pt-BR')}\nPerfil de tarefa: ${profile?.label || profileId}`,
