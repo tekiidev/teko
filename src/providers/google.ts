@@ -6,7 +6,7 @@ export async function google({ model, system, messages, maxTokens, apiKey, baseU
     `${baseUrl.replace(/\/$/, '')}/v1beta/models/${encodeURIComponent(model)}` +
     `:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
 
-  const body = {
+  const body: Record<string, any> = {
     contents: toGoogle(messages, system),
     generationConfig: { maxOutputTokens: maxTokens || 4096 },
   };

@@ -206,7 +206,7 @@ async function handleChat(req, res) {
   let retrieved = '';
   if (project?.id) {
     try {
-      if (projectPath) ensureIndex(project.id);
+      ensureIndex(project.id);
       retrieved = searchForPrompt(project.id, text, { limit: 5 });
     } catch (err) {
       console.error('[busca]', err.message);
@@ -441,6 +441,22 @@ async function dispatch(req, res) {
         nowIso(),
         id,
       );
+
+      if (session.project_id) {
+        const memId = newId('mem');
+        db.prepare(
+          'INSERT INTO memory (id, project_id, kind, title, content, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        ).run(
+          memId,
+          session.project_id,
+          'aprendizado',
+          `Sessão: ${session.title}`,
+          summary.trim(),
+          `session:${id}`,
+          nowIso(),
+        );
+      }
+
       return json(res, 200, { summary: summary.trim(), model: usedModel });
     }
 

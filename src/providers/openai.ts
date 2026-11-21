@@ -29,7 +29,7 @@ export async function openaiCompatible({
   const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
   const chatMessages = toOpenAI(messages, system);
 
-  const baseBody = { model, messages: chatMessages, stream: true };
+  const baseBody: Record<string, any> = { model, messages: chatMessages, stream: true };
   if (maxTokens) baseBody.max_tokens = maxTokens;
   if (tools?.length) baseBody.tools = toolSchemas(tools).openai;
 

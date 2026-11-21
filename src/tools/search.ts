@@ -21,10 +21,8 @@ function globToRegex(glob) {
   return new RegExp(`^${escaped}$`);
 }
 
-export async function grep(
-  { pattern, path: sub = '.', glob = '', ignoreCase = true, max = MAX_MATCHES } = {},
-  ctx,
-) {
+export async function grep(args: any = {}, ctx) {
+  const { pattern, path: sub = '.', glob = '', ignoreCase = true, max = MAX_MATCHES } = args;
   if (!pattern) throw new Error('informe o pattern (regex)');
   let regex;
   try {

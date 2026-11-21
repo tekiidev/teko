@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import { DB_PATH } from './config.js';
 import { PROVIDERS, MODELS, PROFILES } from './catalog.js';
 
-export const db = new DatabaseSync(DB_PATH);
+// SQLite row types follow the dynamic schema; keep queries flexible during this migration.
+export const db: any = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
@@ -211,7 +212,17 @@ function seed() {
   );
 }
 
+function ensureProfiles() {
+  const ins = db.prepare(
+    'INSERT OR IGNORE INTO profiles (id, label, description, chain, system_prompt, sort) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  PROFILES.forEach((p, i) => {
+    ins.run(p.id, p.label, p.description, JSON.stringify(p.chain), p.systemPrompt, i);
+  });
+}
+
 seed();
+ensureProfiles();
 
 export function getModel(id) {
   const row = db.prepare('SELECT * FROM models WHERE id = ?').get(id);

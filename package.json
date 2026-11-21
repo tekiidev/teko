@@ -10,9 +10,15 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "reset": "node scripts/reset.js",
-    "index": "node scripts/index.js"
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "reset": "tsx scripts/reset.ts",
+    "index": "tsx scripts/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }

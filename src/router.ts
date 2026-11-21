@@ -255,7 +255,7 @@ export async function* runChat({
   modelId = null,
   system = '',
   messages,
-  signal,
+  signal = null,
   maxTokens = 4096,
   tools = null,
   projectPath = null,
@@ -442,7 +442,7 @@ export async function* runChat({
       }
 
       yield { type: 'tool_running', id: eventId, callId: call.id, name: call.name };
-      const result = await executeTool(call.name, args, { root: projectPath, projectId });
+      const result: any = await executeTool(call.name, args, { root: projectPath, projectId });
       const output = String(result.output || '');
       const forModel = output.slice(0, 12000);
 

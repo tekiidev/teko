@@ -14,7 +14,8 @@ const BLOCKED = [
 
 const MAX_OUTPUT = 20_000;
 
-export async function runCommand({ command, cwd = '.', timeoutMs = 120000 } = {}, ctx) {
+export async function runCommand(args: any = {}, ctx) {
+  const { command, cwd = '.', timeoutMs = 120000 } = args;
   if (!command) throw new Error('informe o comando');
   if (BLOCKED.some((re) => re.test(command))) {
     return { ok: false, output: 'comando bloqueado por segurança (destrutivo ou privilegiado)' };

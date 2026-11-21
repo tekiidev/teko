@@ -1,4 +1,9 @@
 export class ProviderError extends Error {
+  status: number;
+  code: string | null;
+  retryAfter: number | null;
+  body: string;
+
   constructor(message, { status = 0, code = null, retryAfter = null, body = '' } = {}) {
     super(message);
     this.name = 'ProviderError';

@@ -2,14 +2,15 @@
 
 Orquestrador local de IAs por **Felipe Oliveira** (@tekidev). Conversa com várias IAs usando o mesmo contexto: projetos, decisões, bugs, documentos, Drive e Figma. Escolhe o modelo, e se ele falhar ou estourar cota, o próximo da fila assume sozinho.
 
-Zero dependências: Node 24 + `node:sqlite` + `fetch`. Sem build, sem `npm install`.
+Backend TypeScript executado com `tsx`, sem etapa de build. Requer Node 22.5+ (`node:sqlite`).
 
 ## Rodar
 
 ```bash
 cd ~/Documents/teki-projects/teko
+npm install
 cp .env.example .env      # opcional: preencha as chaves que você tem
-node src/server.js        # ou: npm start (npm run dev recarrega sozinho)
+npm start                 # npm run dev recarrega sozinho
 npm run index             # reindexa os projetos com caminho local
 ```
 
@@ -19,7 +20,8 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 
 ## O que já funciona
 
-- **Chat com roteamento por perfil** — `código`, `projeto/arquitetura`, `documentação`, `revisão`, `bug`.
+- **Chat com roteamento por perfil** — `código`, `projeto/arquitetura`, `documentação`, `revisão`, `bug`, `caveman (econômico)`.
+- **Modo Caveman (Econômico)** — respostas telegráficas e ultra-densas que cortam até ~75% de tokens sem perder substância técnica.
 - **Ferramentas no chat** — o modelo lista e lê arquivos, busca com regex, escreve, edita e roda comandos. Escrita e execução pedem **aprovação** na própria bolha.
 - **Busca no projeto** — índice local FTS5 (BM25) sobre código, docs, memória, decisões e bugs. Os melhores trechos entram automaticamente no contexto da conversa.
 - **Fallback automático** — 429, cota esgotada, chave inválida, 5xx, timeout: o modelo entra em cooldown e a fila continua.
@@ -28,7 +30,7 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 - **Orçamento por modelo** — limite de tokens por semana/mês; ao estourar, o modelo sai da fila.
 - **Projetos** — descrição, stack, caminho do repo (`git ls-files` entra no contexto), decisões (ADR-lite) e memória/documentos.
 - **Bugs** — severidade, status, reprodução, esperado/atual, logs, tags; export JSON e Markdown pro projeto separado de bugs.
-- **Resumo de sessão** — condensa a conversa e injeta nos próximos contextos do mesmo projeto.
+- **Memória contínua e resumo de sessão** — condensa a conversa e persiste aprendizados na memória do projeto.
 - **Google Drive/Docs** — OAuth, busca e importação de Docs/Sheets como memória do projeto.
 - **Figma** — token pessoal, leitura de páginas/frames/textos e importação como memória do projeto.
 - **Sync de modelos** — puxa a lista real de cada provider e deixa os novos desativados pra revisão.
@@ -38,19 +40,19 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 ```
 public/                 SPA vanilla (sem build)
 src/
-  server.js             HTTP + SSE + rotas
-  db.js                 schema SQLite + seed
-  catalog.js            providers, modelos, perfis e preços iniciais
-  router.js             fila, fallback, cooldown, orçamento e loop de ferramentas
-  context.js            monta o system prompt do projeto
-  approvals.js          aprovações pendentes de ferramentas
-  search-index.js       índice FTS5 + busca BM25 + trechos pro prompt
+  server.ts             HTTP + SSE + rotas
+  db.ts                 schema SQLite + seed
+  catalog.ts            providers, modelos, perfis e preços iniciais
+  router.ts             fila, fallback, cooldown, orçamento e loop de ferramentas
+  context.ts            monta o system prompt do projeto
+  approvals.ts          aprovações pendentes de ferramentas
+  search-index.ts       índice FTS5 + busca BM25 + trechos pro prompt
   tools/                fs | search | shell | catálogo de ferramentas
-  usage.js              agregações de tokens/custo
-  sync.js               descoberta de modelos por provider
+  usage.ts              agregações de tokens/custo
+  sync.ts               descoberta de modelos por provider
   providers/            anthropic | openai-compatible | google
-  connectors/google.js  OAuth + Drive
-  connectors/figma.js   token + outline de arquivos
+  connectors/google.ts  OAuth + Drive
+  connectors/figma.ts   token + outline de arquivos
 ```
 
 ### Como o fallback decide

@@ -21,7 +21,7 @@ export async function anthropic({
   onDelta,
   tools,
 }) {
-  const body = {
+  const body: Record<string, any> = {
     model,
     max_tokens: maxTokens || 4096,
     messages: toAnthropic(messages, system),

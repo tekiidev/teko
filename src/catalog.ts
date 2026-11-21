@@ -187,4 +187,17 @@ export const PROFILES = [
       'ollama/qwen3:8b',
     ],
   },
+  {
+    id: 'terse',
+    label: 'Caveman (Econômico)',
+    description: 'Respostas telegráficas e diretas para economizar ~75% de tokens.',
+    systemPrompt: `${BASE_SYSTEM} Modo: caveman ultra-terse. Responda de forma direta e telegráfica, sem enrolação ou formalidades. Corte artigos e preâmbulos desnecessários. Código técnico preciso e cirúrgico. Máxima densidade de informação por token.`,
+    chain: [
+      'anthropic/claude-haiku-4-5',
+      'deepseek/deepseek-chat',
+      'google/gemini-2.5-flash',
+      'openai/gpt-5.1-mini',
+      'ollama/qwen3:8b',
+    ],
+  },
 ];

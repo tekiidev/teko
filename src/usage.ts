@@ -69,7 +69,7 @@ export function tokensSince(since, modelId) {
 }
 
 export function usageSummary({ sessionId = null } = {}) {
-  const out = {
+  const out: any = {
     session: emptyTotals(),
     today: sumUsage({ since: windowStart('today') }),
     week: sumUsage({ since: windowStart('week') }),

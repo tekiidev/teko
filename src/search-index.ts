@@ -156,18 +156,20 @@ export function indexProject(projectId) {
   ensureFts();
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
   if (!project) throw new Error('projeto não encontrado');
-  if (!project.path) throw new Error('projeto sem caminho local configurado');
 
-  let stat;
-  try {
-    stat = fs.statSync(project.path);
-  } catch {
-    throw new Error(`caminho não existe: ${project.path}`);
+  let files = [];
+  if (project.path) {
+    try {
+      const stat = fs.statSync(project.path);
+      if (stat.isDirectory()) {
+        files = walkFiles(project.path, MAX_FILES);
+      }
+    } catch {
+      // Caminho inexistente ou inacessível: segue indexando os docs do banco
+    }
   }
-  if (!stat.isDirectory()) throw new Error('caminho não é um diretório');
 
   const started = Date.now();
-  const files = walkFiles(project.path, MAX_FILES);
   let chunks = 0;
   let chars = 0;
 

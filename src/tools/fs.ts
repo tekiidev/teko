@@ -42,7 +42,8 @@ function readTextFile(abs, rel) {
   return buf.toString('utf8');
 }
 
-export async function listFiles({ path: sub = '.', depth = 3 } = {}, ctx) {
+export async function listFiles(args: any = {}, ctx) {
+  const { path: sub = '.', depth = 3 } = args;
   const base = resolveInside(ctx.root, sub);
   const maxDepth = Math.min(Math.max(Number(depth) || 3, 1), 6);
   const out = [];
@@ -78,7 +79,8 @@ export async function listFiles({ path: sub = '.', depth = 3 } = {}, ctx) {
   };
 }
 
-export async function readFile({ path: target, start, end } = {}, ctx) {
+export async function readFile(args: any = {}, ctx) {
+  const { path: target, start, end } = args;
   if (!target) throw new Error('informe o path do arquivo');
   const abs = resolveInside(ctx.root, target);
   const text = readTextFile(abs, target);
@@ -91,7 +93,8 @@ export async function readFile({ path: target, start, end } = {}, ctx) {
   return { ok: true, output: `${target} (linhas ${from}-${to} de ${lines.length})\n${body}` };
 }
 
-export async function writeFile({ path: target, content = '' } = {}, ctx) {
+export async function writeFile(args: any = {}, ctx) {
+  const { path: target, content = '' } = args;
   if (!target) throw new Error('informe o path do arquivo');
   const abs = resolveInside(ctx.root, target);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -99,7 +102,8 @@ export async function writeFile({ path: target, content = '' } = {}, ctx) {
   return { ok: true, output: `escrito ${Buffer.byteLength(String(content))} bytes em ${target}` };
 }
 
-export async function editFile({ path: target, old: from = '', new: to = '', all = false } = {}, ctx) {
+export async function editFile(args: any = {}, ctx) {
+  const { path: target, old: from = '', new: to = '', all = false } = args;
   if (!target) throw new Error('informe o path do arquivo');
   if (!from) throw new Error('informe o trecho antigo (old)');
   const abs = resolveInside(ctx.root, target);
