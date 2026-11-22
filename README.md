@@ -39,7 +39,7 @@ npm install
 cp .env.example .env      # opcional: preencha as chaves que você tem
 npm start                 # npm run dev recarrega sozinho
 npm run typecheck         # checa todos os pacotes via Turborepo
-npm test                  # testes (node:test)
+npm test                  # testes (node:test); a CI roda estes dois em cada PR
 npm run index             # reindexa os projetos com caminho local
 npm run teko -- "oi"      # Teko no terminal (veja abaixo)
 ```
