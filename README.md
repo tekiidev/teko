@@ -1,6 +1,26 @@
-# teko
+# teko 🦾
 
-Orquestrador local de IAs por **Felipe Oliveira** (@tekidev). Conversa com várias IAs usando o mesmo contexto: projetos, decisões, bugs, documentos, Drive e Figma. Escolhe o modelo, e se ele falhar ou estourar cota, o próximo da fila assume sozinho.
+**O JARVIS dos devs.** Todas as suas IAs num corpo só, e nenhum Ultron solto.
+
+> Sabe o Visão, que carrega o JARVIS, a Sexta-Feira, a E.D.I.T.H. e até o Idiota e o Você dentro de uma pedra na testa?
+> O Teko é isso, só que pra IA de verdade: Claude, GPT, Gemini, DeepSeek, Grok, Ollama e companhia morando no mesmo lugar, dividindo a mesma memória e passando a bola quando uma delas cai.
+> O Ultron fica do lado de fora. Nenhuma IA escreve um arquivo ou roda um comando sem você dizer "pode".
+
+Feito por **Felipe Oliveira** ([@tekiidev](https://github.com/tekiidev)), em São Luís do Maranhão.
+
+## Por que "Teko"
+
+- Vem de **Teki**, o apelido de quem fez
+- Em guarani, *teko* quer dizer algo como "modo de ser, jeito de viver"
+- A ideia é essa: um jeito só de trabalhar com todas as IAs, em vez de uma aba pra cada
+
+## O que o Teko promete
+
+- 🧠 **Uma memória pra todas:** projetos, decisões, bugs e documentos entram no contexto de qualquer modelo, e os agentes (Claude Code, Codex, Antigravity) consultam a mesma base via MCP
+- 🔁 **Nunca fica sem resposta:** se o modelo cai, estoura a cota ou dá timeout, o próximo da fila assume sozinho
+- 💸 **Gasta o mínimo:** modelo barato pra triar, modelo forte só quando vale a pena, orçamento por modelo e cada token contado
+- 🛡️ **Seguro por padrão:** roda local, as chaves ficam na sua máquina, ferramentas presas à pasta do projeto e tudo que escreve ou executa pede aprovação
+- 🏠 **Seu, de verdade:** SQLite local, busca local, nada de histórico mandado pra terceiros sem você saber
 
 Backend TypeScript executado com `tsx`, sem etapa de build. Requer Node 22.5+ (`node:sqlite`).
 
@@ -96,7 +116,7 @@ Com um projeto que tem caminho local, o modelo ganha seis ferramentas:
 | `edit_file` | **sim** | substitui trecho exato |
 | `run_command` | **sim** | shell dentro do projeto (timeout 120s) |
 
-Tudo fica preso ao caminho do projeto: `../` e caminhos externos são bloqueados. Comandos destrutivos óbvios (`rm -rf /`, `sudo`, `mkfs`, `dd if=`) são recusados antes da aprovação. Aprovações expiram em 5 minutos; se você fechar a aba, a execução é cancelada.
+É aqui que o Ultron fica preso. Tudo fica restrito ao caminho do projeto: `../` e caminhos externos são bloqueados. Comandos destrutivos óbvios (`rm -rf /`, `sudo`, `mkfs`, `dd if=`) são recusados antes da aprovação. Aprovações expiram em 5 minutos; se você fechar a aba, a execução é cancelada.
 
 ## Busca local
 
@@ -177,3 +197,9 @@ Veja [como conectar os agentes e organizar o contexto](docs/CONTEXTO_UNIFICADO.m
 ```bash
 npm run reset -- --yes
 ```
+
+Apaga o banco local. É o protocolo "Casa Limpa" do Teko: use com consciência.
+
+---
+
+Teko não tem relação com a Marvel. A gente só é fã mesmo. 🦾
