@@ -11,6 +11,9 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
+/// Se o reconhecimento de gestos está ligado no menu; o mapa recebe isso na URL.
+struct GestoAtivo(Arc<AtomicBool>);
+
 #[tauri::command]
 async fn voice_local_request(action: String, body: Vec<u8>) -> Result<Vec<u8>, String> {
     let (path, content_type) = match action.as_str() {
@@ -51,7 +54,9 @@ fn open_context_map(app: tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let url = tauri::Url::parse("http://127.0.0.1:4780/?expand=all&native=1#map")
+    // Com gestos ligados, o próprio mapa assume a câmera: juntar as mãos fecha o mapa.
+    let gestos = app.state::<GestoAtivo>().0.load(Ordering::Relaxed);
+    let url = tauri::Url::parse(&format!("http://127.0.0.1:4780/?native=1&gestos={}#map", u8::from(gestos)))
         .map_err(|err| err.to_string())?;
     WebviewWindowBuilder::new(&app, "context-map", WebviewUrl::External(url))
         .title("Teko · Mapa neural")
@@ -77,6 +82,7 @@ fn main() {
     let gesto_ativo_evento = Arc::clone(&gesto_ativo);
 
     tauri::Builder::default()
+        .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
         .on_window_event(move |window, event| {
             if window.label() == "context-map" && matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(aura) = window.app_handle().get_webview_window("aura") {

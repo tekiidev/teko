@@ -383,7 +383,7 @@ function contextGraph() {
     }, projectNodeId);
 
     const memories = db.prepare(
-      'SELECT id, kind, title, content, created_at FROM memory WHERE project_id = ? ORDER BY created_at DESC',
+      'SELECT id, kind, title, content, source, created_at FROM memory WHERE project_id = ? ORDER BY created_at DESC',
     ).all(p.id);
     for (const m of memories) {
       const memoryId = `memory:${m.id}`;

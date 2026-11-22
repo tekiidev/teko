@@ -4,6 +4,8 @@
 //   1. Falar "Teko" (escuta ligada no menu da barra): um detector de volume recorta trechos curtos
 //      de fala e o servidor confere, com whisper local, se começam com "Teko".
 //      "Teko, pergunta..." numa frase só vai direto; "Teko" sozinho abre a escuta do comando.
+//      Depois da resposta a conversa continua: ele segue ouvindo sem precisar do "Teko" até
+//      ficar VAD.esperaSeguimento sem ninguém falar (ou você dizer "tchau"/"valeu").
 //   2. Segurar ⌥ Espaço: grava enquanto segura.
 // Depois: transcrever (whisper local) -> Teko responde (perfil Voz) -> falar (say do macOS).
 // Tudo passa só pelo servidor local do Teko (npm start) em 127.0.0.1:4780.
@@ -29,6 +31,8 @@ const VAD = {
   maxTrecho: 6000, // ms: trecho de vigia mais longo que isso é descartado
   maxComando: 15000,
   esperaComando: 5000, // se ninguém falar depois do "Teko", desiste
+  esperaSeguimento: 8000, // conversa seguida: silêncio que encerra e volta a exigir "Teko"
+  respiroSeguimento: 350, // pausa depois da fala dele antes de voltar a ouvir (evita pegar o eco)
 };
 
 let ctx = null;
@@ -284,13 +288,14 @@ async function conferirTeko(wav) {
 
 // ---------- gravação do comando ----------
 
-function comecarGravacao({ auto }) {
+function comecarGravacao({ auto, seguimento = false }) {
   pararFala();
-  gravacao = { pedacos: [], inicio: performance.now(), auto, falou: false, silencio: 0 };
+  gravacao = { pedacos: [], inicio: performance.now(), auto, seguimento, falou: false, silencio: 0 };
   modo = 'gravando';
   ativo = micAnalisador;
   aura.estado = 'ouvindo';
-  mostrar('ouvindo', auto ? 'Pode falar.' : '…');
+  // Na conversa seguida a resposta continua na legenda; a aura em "ouvindo" mostra que ele espera você.
+  if (!seguimento) mostrar('ouvindo', auto ? 'Pode falar.' : '…');
 }
 
 function gravarQuadro(quadro, v) {
@@ -305,17 +310,25 @@ function gravarQuadro(quadro, v) {
   } else if (g.falou) g.silencio += 1;
   const dur = performance.now() - g.inicio;
   if ((g.falou && g.silencio >= VAD.fimComando) || dur > VAD.maxComando) terminarGravacao();
-  else if (!g.falou && dur > VAD.esperaComando) cancelarGravacao();
+  else if (!g.falou && dur > (g.seguimento ? VAD.esperaSeguimento : VAD.esperaComando)) {
+    cancelarGravacao(g.seguimento ? 'Conversa encerrada. Diga “Teko” para chamar de novo.' : '');
+  }
 }
 
-function cancelarGravacao() {
+function cancelarGravacao(aviso = '') {
   gravacao = null;
   ativo = null;
   modo = 'parado';
   aura.estado = 'parado';
   mostrar();
-  ajustarMic();
+  ajustarMic().then(() => aviso && modo === 'vigia' && mostrar('teko', aviso, 3500));
 }
+
+/** "Teko, ..." no meio da conversa: tira o chamado e fica só com o pedido. */
+function semChamado(texto) {
+  return texto.replace(/^\s*(ei,?\s*)?te[ck]o[\s,.!:;-]+/i, '').trim() || texto;
+}
+const DESPEDIDA = /^(tchau|valeu|obrigad[oa]|é isso|era isso|pode parar|encerrar|encerra|chega)[\s,.!]*(teko)?[.!]*$/i;
 
 async function terminarGravacao() {
   const g = gravacao;
@@ -332,10 +345,15 @@ async function terminarGravacao() {
     if (error) throw new Error(error);
     if (!text) {
       mostrar('ouvi', 'Não entendi. Fala de novo.', 3000);
+      return fim(meu, true);
+    }
+    const pedido = g.seguimento ? semChamado(text) : text;
+    if (g.seguimento && DESPEDIDA.test(pedido)) {
+      mostrar('teko', 'Fechado. Diga “Teko” quando precisar.', 3500);
       return fim(meu);
     }
-    mostrar('você', text);
-    await responder(text, meu);
+    mostrar('você', pedido);
+    await responder(pedido, meu);
   } catch (err) {
     erro(err, meu);
   }
@@ -356,11 +374,19 @@ async function responder(texto, meu) {
   } catch (err) {
     return erro(err, meu);
   }
-  fim(meu);
+  fim(meu, true);
 }
 
-function fim(meu) {
+/** Fim de um turno. Com `seguir` e a escuta ligada, continua a conversa sem pedir "Teko". */
+function fim(meu, seguir = false) {
   if (meu !== ciclo) return;
+  if (seguir && escuta && mic) {
+    modo = 'ocupado'; // segura os quadros do microfone até a fala dele parar de ecoar
+    setTimeout(() => {
+      if (meu === ciclo && modo === 'ocupado') comecarGravacao({ auto: true, seguimento: true });
+    }, VAD.respiroSeguimento);
+    return;
+  }
   modo = 'parado';
   aura.estado = 'parado';
   ajustarMic();
@@ -512,7 +538,7 @@ function paraWav(pedacos, taxaOrigem) {
 // ---------- entradas ----------
 
 async function apertou() {
-  if (modo === 'gravando') return;
+  if (modo === 'gravando' && !gravacao?.seguimento) return;
   ciclo += 1;
   modo = 'parado';
   if (await abrirMic()) comecarGravacao({ auto: false });
@@ -630,7 +656,7 @@ async function ligarGestos() {
             try {
               await desligarGestos(true);
               await window.__TAURI__.core.invoke('open_context_map');
-              mostrar('teko', 'Mapa neural aberto.', 3500);
+              mostrar('teko', 'Mapa neural aberto. Junte as mãos para fechar.', 3500);
             } catch (err) {
               gestosMapaAberto = false;
               mostrar('erro', `Não consegui abrir o mapa: ${err.message || err}`, 5000);
