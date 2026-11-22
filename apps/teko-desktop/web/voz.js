@@ -11,6 +11,12 @@
 import { criarAura } from './aura.js';
 
 const API = 'http://127.0.0.1:4780/api';
+const ROTAS_VOZ = {
+  wake: `${API}/voice/wake`,
+  transcribe: `${API}/voice/transcribe`,
+  chat: `${API}/chat`,
+  speak: `${API}/voice/speak`,
+};
 const aura = criarAura(document.getElementById('aura'));
 const legenda = document.getElementById('legenda');
 
@@ -37,14 +43,35 @@ let trecho = null; // trecho da vigia em andamento
 let anteriores = []; // pre-roll
 let piso = 0.004; // ruído de fundo estimado
 let conferindo = false;
+let avisouServidor = false;
 let pico = 0; // maior volume visto (depuração)
 let ouvido = ''; // último trecho conferido (depuração)
 let tocando = null;
 let sessionId = null;
 let ciclo = 0;
 let taxa = 48000;
+let versaoLegenda = 0;
+let gestosSolicitados = false;
+let gestosStream = null;
+let gestosLandmarker = null;
+let gestosFrame = 0;
+let gestosBase = null;
+let gestosInicio = 0;
+let gestosMapaAberto = false;
+let gestosEmT = false;
+let statusGestoAtual = '';
+
+function statusGesto(texto) {
+  if (texto === statusGestoAtual) return;
+  statusGestoAtual = texto;
+  const elemento = document.getElementById('gesto-status');
+  if (!elemento) return;
+  elemento.textContent = texto;
+  elemento.classList.toggle('on', Boolean(texto));
+}
 
 function mostrar(quem, texto, apagarEm = 0) {
+  const versao = ++versaoLegenda;
   if (!texto) {
     legenda.classList.remove('on');
     return;
@@ -53,11 +80,13 @@ function mostrar(quem, texto, apagarEm = 0) {
   const q = document.createElement('span');
   q.className = 'quem';
   q.textContent = quem;
-  legenda.append(q, document.createTextNode(texto));
+  const resposta = document.createElement('span');
+  resposta.className = 'resposta';
+  resposta.textContent = texto;
+  legenda.append(q, resposta);
   legenda.classList.add('on');
   if (apagarEm) {
-    const meu = ciclo;
-    setTimeout(() => meu === ciclo && modo !== 'gravando' && mostrar(), apagarEm);
+    setTimeout(() => versao === versaoLegenda && modo !== 'gravando' && mostrar(), apagarEm);
   }
 }
 
@@ -70,7 +99,6 @@ function audio() {
     micAnalisador.fftSize = falaAnalisador.fftSize = 512;
     medir();
   }
-  if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
 
@@ -94,6 +122,27 @@ function rms(quadro) {
   return Math.sqrt(soma / quadro.length);
 }
 
+// No app Tauri, manda as requisições pelo processo Rust para evitar bloqueios de CORS do WebView.
+async function requisicaoLocal(acao, conteudo, tipo) {
+  const body = conteudo instanceof Blob
+    ? new Uint8Array(await conteudo.arrayBuffer())
+    : new TextEncoder().encode(JSON.stringify(conteudo));
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (invoke) {
+    const bytes = await invoke('voice_local_request', { action: acao, body: Array.from(body) });
+    return new Uint8Array(bytes);
+  }
+
+  const res = await fetch(ROTAS_VOZ[acao], {
+    method: 'POST',
+    headers: { 'content-type': tipo },
+    body,
+  });
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (!res.ok) throw new Error(`Teko respondeu HTTP ${res.status}: ${new TextDecoder().decode(bytes)}`);
+  return bytes;
+}
+
 /** Bipe curto pra avisar que ouviu o "Teko". */
 function bipe() {
   const c = audio();
@@ -112,19 +161,22 @@ function bipe() {
 // ---------- microfone ----------
 
 async function abrirMic() {
-  if (mic) return true;
   const c = audio();
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
-    const fonte = c.createMediaStreamSource(stream);
-    const processador = c.createScriptProcessor(4096, 1, 1);
-    processador.onaudioprocess = (e) => aoQuadro(new Float32Array(e.inputBuffer.getChannelData(0)));
-    fonte.connect(processador);
-    fonte.connect(micAnalisador); // só pra medir; não vai pro alto-falante
-    processador.connect(c.destination); // o ScriptProcessor só roda conectado (sai silêncio)
-    mic = { stream, fonte, processador };
+    if (!mic) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      const fonte = c.createMediaStreamSource(stream);
+      const processador = c.createScriptProcessor(4096, 1, 1);
+      processador.onaudioprocess = (e) => aoQuadro(new Float32Array(e.inputBuffer.getChannelData(0)));
+      fonte.connect(processador);
+      fonte.connect(micAnalisador); // só pra medir; não vai pro alto-falante
+      processador.connect(c.destination); // o ScriptProcessor só roda conectado (sai silêncio)
+      mic = { stream, fonte, processador };
+    }
+    if (c.state !== 'running') await c.resume();
+    if (c.state !== 'running') throw new Error(`áudio do app está ${c.state}; clique no menu do Teko e ative a escuta`);
     return true;
   } catch (err) {
     mostrar('erro', `Sem acesso ao microfone (${err.message || err}).`, 5000);
@@ -145,9 +197,20 @@ function fecharMic() {
 // só é usado na vigia ou gravando; enquanto o Teko pensa e fala, os quadros são ignorados.
 async function ajustarMic() {
   if (modo === 'gravando' || escuta) {
-    if ((await abrirMic()) && modo === 'parado' && escuta) modo = 'vigia';
+    if (await abrirMic()) {
+      if (modo === 'parado' && escuta) modo = 'vigia';
+      if (modo === 'vigia') {
+        ativo = micAnalisador;
+        aura.estado = 'ouvindo';
+        mostrar('teko', 'Ouvindo: diga “Teko”.');
+      }
+    }
   } else {
     fecharMic();
+    if (modo === 'parado') {
+      ativo = null;
+      aura.estado = 'parado';
+    }
   }
 }
 
@@ -190,11 +253,15 @@ function vigiar(quadro, v) {
 async function conferirTeko(wav) {
   conferindo = true;
   try {
-    const res = await fetch(`${API}/voice/wake`, { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
-    if (!res.ok || modo !== 'vigia') return;
-    const { wake, rest, text } = await res.json();
+    const bytes = await requisicaoLocal('wake', wav, 'audio/wav');
+    avisouServidor = false;
+    if (modo !== 'vigia') return;
+    const { wake, rest, text } = JSON.parse(new TextDecoder().decode(bytes));
     ouvido = text || '';
-    if (!wake) return;
+    if (!wake) {
+      if (text) mostrar('não reconheci', `“${text}”`, 1800);
+      return;
+    }
     ciclo += 1;
     bipe();
     if (rest && rest.split(/\s+/).length >= 2) {
@@ -204,8 +271,12 @@ async function conferirTeko(wav) {
     } else {
       comecarGravacao({ auto: true });
     }
-  } catch {
-    // servidor fora do ar: a vigia continua tentando nos próximos trechos
+  } catch (err) {
+    // Avise uma vez, sem repetir a mensagem a cada trecho enquanto o servidor estiver fora.
+    if (!avisouServidor) {
+      avisouServidor = true;
+      mostrar('erro', `Teko não conseguiu conferir o áudio (${err.message || err}). Inicie o servidor com npm start.`, 6000);
+    }
   } finally {
     conferindo = false;
   }
@@ -256,13 +327,9 @@ async function terminarGravacao() {
   aura.estado = 'pensando';
   mostrar('ouvi', '…');
   try {
-    const t = await fetch(`${API}/voice/transcribe`, {
-      method: 'POST',
-      headers: { 'content-type': 'audio/wav' },
-      body: paraWav(g.pedacos, taxa),
-    });
-    const { text, error } = await t.json();
-    if (!t.ok) throw new Error(error || `transcrição falhou (${t.status})`);
+    const bytes = await requisicaoLocal('transcribe', paraWav(g.pedacos, taxa), 'audio/wav');
+    const { text, error } = JSON.parse(new TextDecoder().decode(bytes));
+    if (error) throw new Error(error);
     if (!text) {
       mostrar('ouvi', 'Não entendi. Fala de novo.', 3000);
       return fim(meu);
@@ -306,37 +373,25 @@ function erro(err, meu) {
 }
 
 async function perguntar(texto, meu) {
-  const res = await fetch(`${API}/chat`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: texto, sessionId, profileId: 'voice' }),
-  });
-  if (!res.ok || !res.body) throw new Error(`Teko respondeu ${res.status}`);
-  const leitor = res.body.getReader();
-  const dec = new TextDecoder();
-  let buffer = '';
+  const bytes = await requisicaoLocal('chat', { text: texto, sessionId, profileId: 'voice' }, 'application/json');
+  const corpo = new TextDecoder().decode(bytes);
+  let buffer = corpo;
   let resposta = '';
   let falha = null;
-  while (true) {
-    const { done, value } = await leitor.read();
-    if (done) break;
-    if (meu !== ciclo) {
-      leitor.cancel();
-      return null;
-    }
-    buffer += dec.decode(value, { stream: true });
+  while (buffer.length) {
+    if (meu !== ciclo) return null;
     let i;
-    while ((i = buffer.indexOf('\n\n')) !== -1) {
-      const linha = buffer.slice(0, i).split('\n').find((l) => l.startsWith('data:'));
-      buffer = buffer.slice(i + 2);
-      if (!linha) continue;
-      let ev;
-      try { ev = JSON.parse(linha.slice(5)); } catch { continue; }
-      if (ev.type === 'meta') sessionId = ev.sessionId;
-      if (ev.type === 'delta') resposta += ev.text;
-      if (ev.type === 'done' && typeof ev.text === 'string') resposta = ev.text;
-      if (ev.type === 'error') falha = ev.message;
-    }
+    i = buffer.indexOf('\n\n');
+    const evento = i === -1 ? buffer : buffer.slice(0, i);
+    buffer = i === -1 ? '' : buffer.slice(i + 2);
+    const linha = evento.split('\n').find((l) => l.startsWith('data:'));
+    if (!linha) continue;
+    let ev;
+    try { ev = JSON.parse(linha.slice(5)); } catch { continue; }
+    if (ev.type === 'meta') sessionId = ev.sessionId;
+    if (ev.type === 'delta') resposta += ev.text;
+    if (ev.type === 'done' && typeof ev.text === 'string') resposta = ev.text;
+    if (ev.type === 'error') falha = ev.message;
   }
   if (!resposta && falha) throw new Error(falha);
   return resposta;
@@ -355,25 +410,42 @@ function frases(texto) {
 }
 
 async function gerarFala(trecho) {
-  const res = await fetch(`${API}/voice/speak`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: trecho }),
-  });
-  if (!res.ok) return null;
-  return audio().decodeAudioData(await res.arrayBuffer());
+  const bytes = await requisicaoLocal('speak', { text: trecho }, 'application/json');
+  return audio().decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
 function tocar(som) {
   const c = audio();
   const fonte = c.createBufferSource();
+  const seco = c.createGain();
+  const modulador = c.createGain();
+  const metal = c.createGain();
+  const portadora = c.createOscillator();
   fonte.buffer = som;
-  fonte.connect(falaAnalisador);
+  // Ring modulation em paralelo com a voz seca: timbre claramente sintético, ainda inteligível.
+  seco.gain.value = 0.65;
+  metal.gain.value = 0.35;
+  portadora.frequency.value = 42;
+  portadora.connect(modulador.gain);
+  fonte.connect(seco);
+  fonte.connect(modulador);
+  modulador.connect(metal);
+  seco.connect(falaAnalisador);
+  metal.connect(falaAnalisador);
   falaAnalisador.connect(c.destination);
   tocando = fonte;
   ativo = falaAnalisador;
   return new Promise((resolve) => {
-    fonte.onended = resolve;
+    fonte.onended = () => {
+      portadora.stop();
+      fonte.disconnect();
+      seco.disconnect();
+      modulador.disconnect();
+      metal.disconnect();
+      portadora.disconnect();
+      resolve();
+    };
+    portadora.start();
     fonte.start();
   });
 }
@@ -455,13 +527,163 @@ function mudarEscuta(ligada) {
   if (!ligada && modo === 'vigia') modo = 'parado';
   trecho = null;
   ajustarMic();
-  mostrar('teko', ligada ? 'Pode me chamar: "Teko".' : 'Não estou mais ouvindo o "Teko".', 2500);
+  mostrar('teko', ligada ? 'Iniciando escuta de “Teko”…' : 'Escuta de “Teko” desligada.', 2500);
+}
+
+async function desligarGestos(silencioso = false) {
+  gestosSolicitados = false;
+  cancelAnimationFrame(gestosFrame);
+  gestosLandmarker?.close();
+  gestosLandmarker = null;
+  gestosStream?.getTracks().forEach((track) => track.stop());
+  gestosStream = null;
+  const video = document.getElementById('gestos-camera');
+  const preview = document.getElementById('gestos-preview');
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+  }
+  preview?.classList.remove('ativa');
+  aura.janelaCamera(false);
+  gestosBase = null;
+  gestosInicio = 0;
+  gestosMapaAberto = false;
+  gestosEmT = false;
+  aura.formaT(false);
+  statusGesto('');
+  if (!silencioso) mostrar('teko', 'Gesto T desligado; câmera fechada.', 3000);
+}
+
+async function ligarGestos() {
+  if (gestosStream) return;
+  gestosSolicitados = true;
+  const video = document.getElementById('gestos-camera');
+  const preview = document.getElementById('gestos-preview');
+  const previewCtx = preview?.getContext('2d');
+  let ultimoQuadroPrevia = 0;
+  const dpr = window.devicePixelRatio || 1;
+  if (preview) { preview.width = Math.round(272 * dpr); preview.height = Math.round(204 * dpr); }
+  let etapa = 'pedir permissão para a câmera';
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('câmera indisponível neste app');
+    mostrar('teko', 'Ativando gesto T automaticamente enquanto o Teko estiver aberto…');
+    gestosStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    if (!gestosSolicitados) return desligarGestos(true);
+    etapa = 'iniciar a câmera';
+    video.srcObject = gestosStream;
+    await video.play();
+    etapa = 'carregar o detector local';
+    const visionUrl = new URL('./vendor/mediapipe/vision_bundle.mjs', window.location.href).href;
+    const vision = await import(visionUrl);
+    const wasmUrl = new URL('./vendor/mediapipe/wasm/', window.location.href).href;
+    etapa = 'preparar o runtime visual';
+    const files = await vision.FilesetResolver.forVisionTasks(wasmUrl);
+    etapa = 'carregar o modelo de mãos';
+    gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath: new URL('./models/hand_landmarker.task', window.location.href).href, delegate: 'CPU' },
+      runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: .48, minHandPresenceConfidence: .45, minTrackingConfidence: .45,
+    });
+    if (!gestosSolicitados) return desligarGestos(true);
+    mostrar('teko', 'Gesto T pronto. Forme o T com as mãos e afaste para abrir o mapa.');
+    statusGesto('Gestos ligados · mostre as duas mãos');
+
+    const animate = async () => {
+      if (!gestosSolicitados || !gestosLandmarker || video.readyState < 2) {
+        if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+        return;
+      }
+      try {
+        const timestamp = performance.now();
+        if (previewCtx && preview && video.readyState >= 2 && timestamp - ultimoQuadroPrevia > 50) {
+          ultimoQuadroPrevia = timestamp;
+          previewCtx.drawImage(video, 0, 0, preview.width, preview.height);
+        }
+        const result = gestosLandmarker.detectForVideo(video, timestamp);
+        const detectedHands = result.landmarks || [];
+        const janelaAberta = detectedHands.length >= 2;
+        preview?.classList.toggle('ativa', janelaAberta);
+        aura.janelaCamera(janelaAberta);
+        const hands = detectedHands.filter((landmarks) => {
+          const wrist = landmarks[0];
+          const extended = [8, 12, 16, 20].filter((tip, index) => {
+            const pip = [6, 10, 14, 18][index];
+            return Math.hypot(landmarks[tip].x - wrist.x, landmarks[tip].y - wrist.y) >
+              Math.hypot(landmarks[pip].x - wrist.x, landmarks[pip].y - wrist.y) * 1.12;
+          }).length;
+          return extended >= 2;
+        });
+        if (hands.length >= 2 && !gestosMapaAberto) {
+          const a = hands[0][9], b = hands[1][9];
+          const distance = Math.hypot(a.x - b.x, a.y - b.y);
+          const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
+          const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
+          const formsT = distance < .28 && Math.abs(Math.cos(angleA - angleB)) < .62;
+          const now = performance.now();
+          if (gestosBase != null && now - gestosInicio < 4500 && distance > gestosBase + .1) {
+            aura.formaT(false);
+            gestosEmT = false;
+            gestosMapaAberto = true;
+            try {
+              await desligarGestos(true);
+              await window.__TAURI__.core.invoke('open_context_map');
+              mostrar('teko', 'Mapa neural aberto.', 3500);
+            } catch (err) {
+              gestosMapaAberto = false;
+              mostrar('erro', `Não consegui abrir o mapa: ${err.message || err}`, 5000);
+              await ligarGestos();
+            }
+          } else if (formsT) {
+            aura.formaT(true);
+            statusGesto('T reconhecido · afaste as mãos');
+            if (!gestosEmT) mostrar('teko', 'T reconhecido. Afaste as mãos para abrir a rede.', 1800);
+            gestosEmT = true;
+            if (gestosBase == null || now - gestosInicio >= 4500) {
+              gestosBase = distance;
+              gestosInicio = now;
+            }
+          } else if (now - gestosInicio >= 4500) {
+            gestosBase = null;
+            aura.formaT(false);
+            gestosEmT = false;
+            statusGesto('Aproxime as mãos e forme um T');
+          } else {
+            aura.formaT(false);
+            gestosEmT = false;
+            statusGesto('Aproxime as mãos e forme um T');
+          }
+        } else if (hands.length < 2) {
+          gestosBase = null;
+          gestosInicio = 0;
+          aura.formaT(false);
+          gestosEmT = false;
+          statusGesto(detectedHands.length < 2
+            ? 'Mostre as duas mãos para a câmera'
+            : 'Abra os dedos das duas mãos');
+        }
+      } catch (err) {
+        console.error('[Teko] erro no detector de gestos:', err);
+      }
+      if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+    };
+    gestosFrame = requestAnimationFrame(animate);
+  } catch (err) {
+    await desligarGestos(true);
+    const detalhe = [err.name, err.message].filter(Boolean).join(': ');
+    statusGesto(`Câmera indisponível: ${detalhe || err}`);
+    mostrar('erro', `Falha ao ${etapa}: ${detalhe || err}`);
+  }
 }
 
 if (window.__TAURI__) {
   const { listen } = window.__TAURI__.event;
   listen('falar', ({ payload }) => (payload ? apertou() : soltou()));
   listen('escuta', ({ payload }) => mudarEscuta(Boolean(payload)));
+  listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
+  listen('mapa-aberto', () => desligarGestos(true));
 } else {
   // Fora do Tauri (navegador, pra testar): barra de espaço faz o papel do atalho.
   window.addEventListener('keydown', (e) => e.code === 'Space' && !e.repeat && apertou());
@@ -471,4 +693,8 @@ if (window.__TAURI__) {
 // Estado pra depurar no console do webview: __teko()
 window.__teko = () => ({ modo, escuta, mic: Boolean(mic), audio: ctx?.state, piso: Number(piso.toFixed(4)), pico: Number(pico.toFixed(4)), ouvido, conferindo });
 
+mostrar('teko', 'Iniciando escuta do microfone…');
 ajustarMic();
+// O gesto T é parte do modo normal do Teko: a câmera fica ativa só enquanto o app estiver aberto.
+// O item no menu da barra permite desligar temporariamente a detecção.
+ligarGestos();

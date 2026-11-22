@@ -35,12 +35,12 @@ export function voiceSettings() {
     model: process.env.WHISPER_MODEL || cfg.model || path.join(MODELS_DIR, DEFAULT_MODEL),
     wakeModel: process.env.WHISPER_WAKE_MODEL || cfg.wakeModel || path.join(MODELS_DIR, WAKE_MODEL),
     language: cfg.language || 'pt',
-    // say do macOS: reserva quando a voz clonada não está no ar (masculina).
-    voice: process.env.TEKO_VOICE || cfg.voice || 'Reed',
-    // auto = voz clonada se o servidor dela estiver rodando, senão say.
-    engine: process.env.TEKO_VOICE_ENGINE || cfg.engine || 'auto',
+    // Voz masculina em português do Brasil, instalada no macOS.
+    voice: process.env.TEKO_VOICE || cfg.voice || 'Reed (Português (Brasil))',
+    // A voz local do macOS mantém o mesmo timbre sem custo de API ou serviço extra.
+    engine: process.env.TEKO_VOICE_ENGINE || cfg.engine || 'say',
     ttsUrl: process.env.TEKO_TTS_URL || cfg.ttsUrl || 'http://127.0.0.1:4781',
-    rate: Number(cfg.rate) > 0 ? Number(cfg.rate) : 190,
+    rate: Number(cfg.rate) > 0 ? Number(cfg.rate) : 178,
   };
 }
 

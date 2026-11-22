@@ -1,5 +1,6 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+if (new URLSearchParams(location.search).get('native') === '1') document.body.classList.add('native-map');
 
 const state = {
   data: null,
@@ -20,6 +21,7 @@ const state = {
     sessions: [],
   },
 };
+let activeViewCleanup = null;
 
 /* ---------------- utils ---------------- */
 
@@ -201,9 +203,12 @@ const TITLES = {
   bugs: 'Bugs',
   models: 'Modelos',
   connections: 'Conexões',
+  map: 'Mapa de contexto',
 };
 
 function setView(view) {
+  activeViewCleanup?.();
+  activeViewCleanup = null;
   state.view = view;
   $('#view-title').textContent = TITLES[view] || view;
   $$('#nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
@@ -218,6 +223,366 @@ function renderView() {
   if (state.view === 'bugs') return mountBugs();
   if (state.view === 'models') return mountModels();
   if (state.view === 'connections') return mountConnections();
+  if (state.view === 'map') {
+    mountContextMap().then((cleanup) => {
+      if (state.view === 'map') activeViewCleanup = cleanup;
+      else cleanup?.();
+    });
+    return;
+  }
+}
+
+/* ---------------- context map ---------------- */
+
+async function mountContextMap() {
+  $('#view').innerHTML = `
+    <div class="view-pad context-map-page">
+      <div class="map-toolbar">
+        <div><h2>Mapa neural do Teko</h2><p>PROTOCOLO J.A.R.V.I.S. · JOIAS DO INFINITO ONLINE</p></div>
+        <div class="map-actions">
+          <input id="map-search" type="search" placeholder="Buscar em projetos e contexto…" aria-label="Buscar contexto" />
+          ${new URLSearchParams(location.search).get('native') === '1' ? '<button class="btn" id="map-close">Fechar mapa</button>' : '<button class="btn" id="map-camera">◎ Ativar gesto T</button>'}
+          <button class="btn" id="map-refresh">↻ Atualizar</button>
+        </div>
+      </div>
+      <div class="map-workspace">
+        <div class="map-stage" id="map-stage">
+          <canvas id="context-canvas" aria-label="Mapa visual do contexto"></canvas>
+          <video id="context-camera" playsinline muted></video>
+          <div class="map-hud"><span id="map-count">Carregando rede…</span><span id="map-camera-status">Câmera desligada</span></div>
+          <div class="map-zoom"><button id="map-zoom-in" aria-label="Aproximar">+</button><button id="map-zoom-out" aria-label="Afastar">−</button><button id="map-fit" aria-label="Enquadrar mapa">⌖</button></div>
+        </div>
+        <aside class="map-inspector" id="map-inspector"><div class="map-empty"><span>✳</span><strong>Explore sua rede</strong><p>Clique num projeto para abrir seus ramos. Arraste para navegar; use a roda para zoom.</p></div></aside>
+      </div>
+      <div class="map-legend"><strong class="map-legend-title">INFINITY PROTOCOL</strong><span><i class="root"></i> Núcleo Teko</span><span><i class="project"></i> Espaço · Projeto</span><span><i class="session"></i> Mente · Conversa</span><span><i class="decision"></i> Alma · Decisão</span><span><i class="memory"></i> Tempo · Memória</span><span><i class="branch"></i> Realidade · Ramificação</span><span><i class="bug"></i> Poder · Bug</span><span class="map-legend-archive"><span class="ego"><i></i> Ego</span><span class="death"><i></i> Morte</span></span><span class="map-local-note">Busca e gestos rodam no Mac; nenhum vídeo é enviado.</span></div>
+    </div>`;
+
+  const canvas = $('#context-canvas');
+  const ctx = canvas.getContext('2d');
+  const stage = $('#map-stage');
+  const view = { nodes: [], edges: [], positions: new Map(), expanded: new Set(), selected: null, query: '', scale: 1, x: 0, y: 0, ready: false, dragging: false, pointer: null, searchTimer: null, frame: 0, landmarker: null, cameraStream: null, handBase: null, tStartedAt: 0, gestureOpened: false };
+  let disposed = false;
+  let searchRequest = 0;
+
+  // Joias de contexto: cores e nomes seguem a referência enviada; Ego e Morte ficam no arquivo visual.
+  const colors = { root: '#9bf7ff', project: '#256cff', session: '#ffd719', decision: '#ff9b19', memory: '#28e34e', branch: '#f23d35', bug: '#a02cff' };
+  const pixelStones = {
+    project: { name: 'Espaço', palette: ['#092359', '#1458e6', '#397dff', '#d9efff'] },
+    session: { name: 'Mente', palette: ['#704300', '#eab400', '#fff03b', '#fff8c2'] },
+    decision: { name: 'Alma', palette: ['#7b3100', '#e8750b', '#ffac31', '#fff1a0'] },
+    bug: { name: 'Poder', palette: ['#3e075f', '#8e13db', '#cb43ff', '#f5c5ff'] },
+    branch: { name: 'Realidade', palette: ['#64131d', '#df1b28', '#ff4d42', '#ffd0ab'] },
+    memory: { name: 'Tempo', palette: ['#07521e', '#12b93c', '#55f36b', '#d5ffbb'] },
+    ego: { name: 'Ego', palette: ['#4f0c51', '#c014c9', '#ff58ed', '#ffd2ff'] },
+    death: { name: 'Morte', palette: ['#25272e', '#777b83', '#d5d7d8', '#ffffff'] },
+  };
+  const gemPixels = [
+    '0001000', '0011100', '0111110', '1111111', '1122211',
+    '1123321', '1123321', '0112210', '0011100', '0001000',
+  ];
+  const rgba = (hex, alpha) => {
+    const n = Number.parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${alpha})`;
+  };
+  function drawGem(x, y, r, color, type, selected, intensity = 1) {
+    if (type === 'root') {
+      ctx.save();
+      ctx.shadowColor = color; ctx.shadowBlur = selected ? 28 : 22;
+      ctx.beginPath(); ctx.arc(x, y, r * .68, 0, Math.PI * 2);
+      ctx.fillStyle = '#081722'; ctx.fill();
+      ctx.strokeStyle = rgba(color, .92 * intensity); ctx.lineWidth = 2; ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(x, y, r * .48, 0, Math.PI * 2);
+      ctx.fillStyle = rgba(color, .16 * intensity); ctx.fill();
+      ctx.strokeStyle = rgba(color, .48 * intensity); ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, r * .18, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${.86 * intensity})`; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(color, .38 * intensity); ctx.lineWidth = 1; ctx.stroke();
+      if (selected) { ctx.beginPath(); ctx.arc(x, y, r + 12, 0, Math.PI * 2); ctx.setLineDash([2, 5]); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.restore();
+      return;
+    }
+    const gem = pixelStones[type];
+    const palette = intensity < 1 ? ['#18202a', '#344252', '#607083', '#91a0ae'] : gem?.palette;
+    const gemRadius = Math.max(r, 11 / view.scale);
+    const cell = (gemRadius * 1.36) / 7;
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = selected ? 17 : 7;
+    ctx.beginPath(); ctx.arc(x, y, gemRadius * .9, 0, Math.PI * 2);
+    ctx.fillStyle = '#03070c'; ctx.fill();
+    ctx.strokeStyle = rgba(color, .43 * intensity); ctx.lineWidth = 1; ctx.stroke();
+    ctx.shadowBlur = 0;
+    const left = x - cell * 3.5, top = y - gemRadius;
+    for (let row = 0; row < gemPixels.length; row++) {
+      for (let col = 0; col < gemPixels[row].length; col++) {
+        const shade = Number(gemPixels[row][col]);
+        if (!shade) continue;
+        ctx.fillStyle = rgba(palette[shade - 1], intensity);
+        ctx.fillRect(Math.round(left + col * cell), Math.round(top + row * cell), Math.ceil(cell), Math.ceil(cell));
+      }
+    }
+    if (selected) {
+      ctx.beginPath(); ctx.arc(x, y, gemRadius + 7 / view.scale, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(color, .66); ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.restore();
+  }
+  const visibleNodes = () => {
+    const ids = new Set(['root']);
+    for (const node of view.nodes) {
+      if (node.type === 'project') ids.add(node.id);
+      if (view.expanded.has(node.projectId)) ids.add(node.id);
+    }
+    return view.nodes.filter((node) => ids.has(node.id));
+  };
+  const visibleEdges = () => {
+    const ids = new Set(visibleNodes().map((node) => node.id));
+    return view.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
+  };
+  const searchResults = () => {
+    const query = view.query.trim().toLocaleLowerCase('pt-BR');
+    return query ? view.nodes.filter((node) => `${node.label} ${node.detail || ''}`.toLocaleLowerCase('pt-BR').includes(query)) : [];
+  };
+  function rebuildPositions() {
+    const projects = view.nodes.filter((n) => n.type === 'project');
+    view.positions.set('root', { x: 0, y: 0 });
+    const radius = Math.max(300, projects.length * 82);
+    projects.forEach((project, index) => {
+      const angle = -Math.PI / 2 + (index / Math.max(projects.length, 1)) * Math.PI * 2;
+      const center = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      view.positions.set(project.id, center);
+      const children = view.nodes.filter((node) => node.projectId === project.projectId && node.type !== 'project');
+      children.forEach((node, childIndex) => {
+        const childAngle = angle + ((childIndex / Math.max(children.length, 1)) - 0.5) * 1.7;
+        const childRadius = 155 + (Math.floor(childIndex / 7) * 92);
+        view.positions.set(node.id, { x: center.x + Math.cos(childAngle) * childRadius, y: center.y + Math.sin(childAngle) * childRadius });
+      });
+    });
+    for (const node of view.nodes.filter((n) => !n.projectId && n.type !== 'root')) {
+      const i = view.positions.size;
+      view.positions.set(node.id, { x: Math.cos(i * 2.4) * (270 + (i % 4) * 75), y: Math.sin(i * 2.4) * (270 + (i % 4) * 75) });
+    }
+  }
+  function resize() {
+    if (!canvas.isConnected) return;
+    const rect = stage.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
+    canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw();
+  }
+  const screenPoint = (point) => ({ x: stage.clientWidth / 2 + view.x + point.x * view.scale, y: stage.clientHeight / 2 + view.y + point.y * view.scale });
+  function draw() {
+    if (!canvas.isConnected) return;
+    const w = stage.clientWidth, h = stage.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save(); ctx.translate(w / 2 + view.x, h / 2 + view.y); ctx.scale(view.scale, view.scale);
+    ctx.fillStyle = 'rgba(115,168,220,.12)';
+    for (let x = -2500; x <= 2500; x += 48) for (let y = -2500; y <= 2500; y += 48) { ctx.beginPath(); ctx.arc(x, y, .8 / view.scale, 0, 7); ctx.fill(); }
+    ctx.save();
+    ctx.strokeStyle = 'rgba(95,212,255,.045)'; ctx.lineWidth = 1 / view.scale;
+    for (const radius of [180, 360, 540]) { ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
+    const shownEdges = visibleEdges(); const shown = visibleNodes(); const results = searchResults(); const matches = new Set(results.map((node) => node.id));
+    for (const edge of shownEdges) {
+      const a = view.positions.get(edge.source), b = view.positions.get(edge.target); if (!a || !b) continue;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2, b.x, b.y);
+      const child = view.nodes.find((n) => n.id === edge.target);
+      ctx.strokeStyle = view.query && !matches.has(edge.target) ? 'rgba(100,125,155,.09)' : rgba(colors[child?.type] || '#66829e', child?.type === 'project' ? .5 : .3);
+      ctx.lineWidth = child?.type === 'project' ? 1.6 : 1; ctx.stroke();
+    }
+    for (const node of shown) {
+      const point = view.positions.get(node.id); if (!point) continue;
+      const isRoot = node.type === 'root', isProject = node.type === 'project';
+      const r = isRoot ? 34 : isProject ? 23 : 14;
+      const matched = matches.has(node.id); const faded = view.query && results.length && !matched && !isRoot;
+      drawGem(point.x, point.y, r + (view.selected === node.id ? 2 : 0), faded ? '#526174' : colors[node.type] || '#42b9ff', node.type, view.selected === node.id || matched, faded ? .28 : 1);
+      if (matched) { ctx.beginPath(); ctx.arc(point.x, point.y, r + 13, 0, 7); ctx.strokeStyle = 'rgba(155,247,255,.62)'; ctx.lineWidth = 1.2; ctx.stroke(); }
+      ctx.fillStyle = faded ? '#68778a' : colors[node.type] || '#e9f3ff'; ctx.textAlign = 'center'; ctx.font = `${isRoot ? 700 : 550} ${isRoot ? 12 : isProject ? 11 : 10}px system-ui`;
+      ctx.fillText(node.label.length > (isProject ? 24 : 21) ? `${node.label.slice(0, isProject ? 22 : 19)}…` : node.label, point.x, point.y + r + 15);
+      if (isProject) { const n = view.nodes.filter((item) => item.projectId === node.projectId && item.type !== 'project').length; ctx.font = '10px system-ui'; ctx.fillStyle = '#8fa3bd'; ctx.fillText(`${n} nós · ${view.expanded.has(node.projectId) ? 'aberto' : 'clique para expandir'}`, point.x, point.y + r + 30); }
+    }
+    ctx.restore();
+  }
+  function fitMap() {
+    const nodes = visibleNodes().map((n) => view.positions.get(n.id)).filter(Boolean);
+    if (!nodes.length) return;
+    const xs = nodes.map((p) => p.x), ys = nodes.map((p) => p.y);
+    const width = Math.max(320, Math.max(...xs) - Math.min(...xs) + 140), height = Math.max(260, Math.max(...ys) - Math.min(...ys) + 150);
+    view.scale = Math.min(1.25, Math.max(.28, Math.min((stage.clientWidth - 70) / width, (stage.clientHeight - 70) / height)));
+    view.x = -(Math.min(...xs) + Math.max(...xs)) / 2 * view.scale; view.y = -(Math.min(...ys) + Math.max(...ys)) / 2 * view.scale; draw();
+  }
+  function updateCount() {
+    const visible = visibleNodes().length, results = searchResults();
+    $('#map-count').textContent = `${view.nodes.length} nós na rede · ${visible} visíveis${view.query ? ` · ${results.length} encontrados` : ''}`;
+  }
+  function showInspector(node) {
+    view.selected = node.id; draw();
+    const project = view.nodes.find((n) => n.type === 'project' && n.projectId === node.projectId);
+    const labels = { root: 'Núcleo Teko', project: 'Joia do Espaço · Projeto', session: 'Joia da Mente · Conversa', decision: 'Joia da Alma · Decisão', memory: 'Joia do Tempo · Memória', branch: 'Joia da Realidade · Ramificação', bug: 'Joia do Poder · Bug' };
+    $('#map-inspector').innerHTML = `<div class="map-detail"><div class="map-detail-kicker"><i style="background:${colors[node.type]};color:${colors[node.type]}"></i>${labels[node.type] || 'Contexto'}${node.updatedAt ? ` · ${esc(fmtDate(node.updatedAt))}` : ''}</div><h3>${esc(node.label)}</h3><div class="map-detail-body">${esc(node.detail || 'Sem detalhes salvos.').replace(/\n/g, '<br>')}</div><div class="map-detail-actions">${project ? `<button class="btn sm" id="map-copy-project">Copiar contexto do projeto</button>` : ''}${node.sessionId ? '<button class="btn sm primary" id="map-open-session">Abrir conversa</button><button class="btn sm" id="map-copy-session">Copiar contexto</button>' : ''}${node.projectId ? '<button class="btn sm" id="map-go-project">Ver projeto</button><button class="btn sm" id="map-new-branch">+ Criar ramificação</button>' : ''}</div></div>`;
+    if ($('#map-copy-project')) $('#map-copy-project').onclick = () => copyContext({ projectId: project.projectId });
+    if ($('#map-open-session')) $('#map-open-session').onclick = async () => { state.chat.projectId = node.projectId || null; setView('chat'); await openSession(node.sessionId); };
+    if ($('#map-copy-session')) $('#map-copy-session').onclick = () => copyContext({ sessionId: node.sessionId, projectId: node.projectId });
+    if ($('#map-go-project')) $('#map-go-project').onclick = () => { state.projectId = node.projectId; setView('projects'); };
+    if ($('#map-new-branch')) $('#map-new-branch').onclick = async () => {
+      const title = prompt('Nome desta ramificação:');
+      if (!title?.trim()) return;
+      const content = prompt('Que contexto você quer guardar neste ramo?');
+      if (!content?.trim()) return;
+      try {
+        const saved = await api('/api/memory', { method: 'POST', body: { projectId: node.projectId, kind: 'ramificacao', title: title.trim(), content: content.trim(), source: node.id } });
+        await loadGraph();
+        const branch = view.nodes.find((item) => item.id === `memory:${saved.id}`);
+        if (branch) { view.expanded.add(branch.projectId); showInspector(branch); }
+        toast('Ramificação salva no contexto do projeto', 'ok');
+      } catch (err) { toast(`Não foi possível salvar: ${err.message}`, 'err'); }
+    };
+  }
+  async function showSearchResults(query) {
+    const requestId = ++searchRequest;
+    if (!query.trim()) return;
+    try {
+      const out = await api(`/api/search?q=${encodeURIComponent(query)}&limit=20`);
+      if (disposed || requestId !== searchRequest || view.query !== query) return;
+      const rows = out.results || [];
+      const hits = rows.length ? rows.map((hit, index) => `
+        <div class="map-search-hit">
+          <div class="map-detail-kicker"><i style="background:${colors.project}"></i>${esc(hit.project || 'Projeto')} · ${esc(hit.kind || 'contexto')}</div>
+          <strong>${esc(hit.title || hit.path || 'Trecho relevante')}</strong>
+          ${hit.path ? `<div class="map-search-path">${esc(hit.path)}${hit.startLine ? `:${hit.startLine}` : ''}</div>` : ''}
+          <div class="map-search-snippet">${highlightSnippet(hit.snippet || '')}</div>
+          <button class="btn sm" data-search-hit="${index}">Abrir projeto</button>
+        </div>`).join('') : '<div class="map-empty"><strong>Nenhum trecho no índice</strong><p>A busca visual ainda procura em projetos, conversas e memórias mostrados na rede.</p></div>';
+      const graphHits = searchResults().length;
+      $('#map-inspector').innerHTML = `<div class="map-detail"><div class="map-detail-kicker">Busca local · sem tokens de API</div><h3>${esc(query)}</h3><p class="map-search-summary">${graphHits} itens da rede e ${rows.length} trechos indexados.</p>${hits}</div>`;
+      $$('[data-search-hit]', $('#map-inspector')).forEach((button) => {
+        button.onclick = () => {
+          const hit = rows[Number(button.dataset.searchHit)];
+          const projectNode = view.nodes.find((node) => node.type === 'project' && node.projectId === hit.projectId);
+          if (projectNode) { view.expanded.add(projectNode.projectId); showInspector(projectNode); }
+          else { state.projectId = hit.projectId; setView('projects'); }
+        };
+      });
+    } catch (err) {
+      if (!disposed && requestId === searchRequest) $('#map-inspector').innerHTML = `<div class="map-detail"><strong>Busca do índice indisponível</strong><p>${esc(err.message)}</p></div>`;
+    }
+  }
+  async function loadGraph() {
+    $('#map-count').textContent = 'Carregando rede…';
+    try {
+      const graph = await api('/api/graph'); if (disposed) return;
+      view.nodes = graph.nodes || []; view.edges = graph.edges || []; rebuildPositions(); view.ready = true;
+      if (new URLSearchParams(location.search).get('expand') === 'all') {
+        view.expanded = new Set(view.nodes.filter((node) => node.type === 'project').map((node) => node.projectId));
+      }
+      $('#map-count').textContent = `${view.nodes.length} nós na rede`;
+      resize(); fitMap(); updateCount();
+      if (view.nodes.length === 1) $('#map-inspector').innerHTML = '<div class="map-empty"><strong>A rede começou vazia</strong><p>Adicione projetos, conversas ou decisões no Teko para vê-los aqui.</p></div>';
+    } catch (err) { $('#map-count').textContent = `Falha ao carregar rede: ${err.message}`; }
+  }
+  function zoomAt(factor, x = stage.clientWidth / 2, y = stage.clientHeight / 2) {
+    const before = { x: (x - stage.clientWidth / 2 - view.x) / view.scale, y: (y - stage.clientHeight / 2 - view.y) / view.scale };
+    view.scale = Math.max(.2, Math.min(3.5, view.scale * factor));
+    view.x = x - stage.clientWidth / 2 - before.x * view.scale; view.y = y - stage.clientHeight / 2 - before.y * view.scale; draw();
+  }
+  function hitTest(x, y) {
+    return visibleNodes().map((node) => ({ node, point: screenPoint(view.positions.get(node.id)) })).reverse().find(({ node, point }) => {
+      const radius = node.type === 'root' ? 42 : node.type === 'project' ? 34 : 24;
+      return Math.hypot(point.x - x, point.y - y) <= radius;
+    })?.node;
+  }
+  canvas.addEventListener('pointerdown', (event) => { canvas.setPointerCapture(event.pointerId); view.dragging = true; view.pointer = { x: event.clientX, y: event.clientY }; });
+  canvas.addEventListener('pointermove', (event) => { if (!view.dragging) return; const dx = event.clientX - view.pointer.x, dy = event.clientY - view.pointer.y; if (Math.abs(dx) + Math.abs(dy) > 4) view.didDrag = true; view.x += dx; view.y += dy; view.pointer = { x: event.clientX, y: event.clientY }; draw(); });
+  canvas.addEventListener('pointerup', (event) => { view.dragging = false; if (!view.didDrag) { const node = hitTest(event.clientX - stage.getBoundingClientRect().left, event.clientY - stage.getBoundingClientRect().top); if (node) { if (node.type === 'project') { if (view.expanded.has(node.projectId)) view.expanded.delete(node.projectId); else view.expanded.add(node.projectId); updateCount(); } showInspector(node); } } view.didDrag = false; });
+  canvas.addEventListener('wheel', (event) => { event.preventDefault(); const rect = stage.getBoundingClientRect(); zoomAt(event.deltaY < 0 ? 1.1 : .91, event.clientX - rect.left, event.clientY - rect.top); }, { passive: false });
+  $('#map-zoom-in').onclick = () => zoomAt(1.2); $('#map-zoom-out').onclick = () => zoomAt(.83); $('#map-fit').onclick = fitMap;
+  if ($('#map-close')) $('#map-close').onclick = () => window.__TAURI__?.core?.invoke('close_context_map');
+  $('#map-refresh').onclick = loadGraph;
+  $('#map-search').addEventListener('input', () => {
+    view.query = $('#map-search').value; clearTimeout(view.searchTimer);
+    if (!view.query.trim()) {
+      searchRequest += 1;
+      $('#map-inspector').innerHTML = '<div class="map-empty"><span>✳</span><strong>Explore sua rede</strong><p>Clique num projeto para abrir seus ramos. Arraste para navegar; use a roda para zoom.</p></div>';
+      draw(); updateCount(); return;
+    }
+    const hits = searchResults(); for (const hit of hits) if (hit.projectId) view.expanded.add(hit.projectId);
+    if (view.query) view.searchTimer = setTimeout(async () => {
+      await showSearchResults(view.query);
+    }, 650);
+    draw(); updateCount();
+  });
+  const observer = new ResizeObserver(resize); observer.observe(stage);
+
+  async function toggleCamera() {
+    const button = $('#map-camera'), status = $('#map-camera-status');
+    if (view.cameraStream) {
+      view.cameraStream.getTracks().forEach((track) => track.stop()); view.cameraStream = null;
+      view.landmarker?.close(); view.landmarker = null; cancelAnimationFrame(view.frame);
+      $('#context-camera').srcObject = null; button.textContent = '◎ Ativar gesto T'; status.textContent = 'Câmera desligada'; view.handBase = null; view.tStartedAt = 0; view.gestureOpened = false; return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) { status.textContent = 'Câmera indisponível neste contexto'; return toast('Abra o Teko desktop para usar a câmera', 'err'); }
+    button.disabled = true; button.textContent = 'Preparando…'; status.textContent = 'Solicitando permissão da câmera…';
+    try {
+      const video = $('#context-camera');
+      view.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      video.srcObject = view.cameraStream; await video.play();
+      status.textContent = 'Carregando detector local…';
+      const vision = await import('/vendor/mediapipe/vision_bundle.mjs');
+      const files = await vision.FilesetResolver.forVisionTasks('/vendor/mediapipe/wasm');
+      view.landmarker = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: '/api/vision/hand_landmarker.task', delegate: 'CPU' }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: .6, minHandPresenceConfidence: .55, minTrackingConfidence: .55 });
+      button.textContent = '◉ Desativar gesto'; status.textContent = 'Forme um T com as mãos e afaste para abrir o mapa';
+      const animate = () => {
+        if (!view.landmarker || video.readyState < 2) { view.frame = requestAnimationFrame(animate); return; }
+        try {
+          const result = view.landmarker.detectForVideo(video, performance.now());
+          const hands = (result.landmarks || []).filter((landmarks) => {
+            const wrist = landmarks[0]; const extended = [8, 12, 16, 20].filter((tip, i) => {
+              const pip = [6, 10, 14, 18][i];
+              return Math.hypot(landmarks[tip].x - wrist.x, landmarks[tip].y - wrist.y) > Math.hypot(landmarks[pip].x - wrist.x, landmarks[pip].y - wrist.y) * 1.12;
+            }).length;
+            return extended >= 3;
+          });
+          if (hands.length >= 2) {
+            const a = hands[0][9], b = hands[1][9], distance = Math.hypot(a.x - b.x, a.y - b.y);
+            const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
+            const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
+            const formsT = distance < .2 && Math.abs(Math.cos(angleA - angleB)) < .42;
+            const now = performance.now();
+            if (!view.gestureOpened && view.handBase != null && now - view.tStartedAt < 2500 && distance > view.handBase + .12) {
+              view.expanded = new Set(view.nodes.filter((node) => node.type === 'project').map((node) => node.projectId));
+              view.gestureOpened = true;
+              updateCount(); fitMap();
+              status.textContent = 'T reconhecido · mapa neural aberto';
+            } else if (!view.gestureOpened && formsT) {
+              if (view.handBase == null || now - view.tStartedAt >= 2500) {
+                view.handBase = distance;
+                view.tStartedAt = now;
+              }
+              status.textContent = 'T reconhecido · afaste as mãos para abrir';
+            } else if (!view.gestureOpened && now - view.tStartedAt >= 2500) {
+              view.handBase = null;
+              status.textContent = 'Faça um T com as duas mãos abertas e afaste';
+            } else if (view.gestureOpened) {
+              status.textContent = 'Mapa aberto · navegue por projetos e conversas';
+            } else {
+              status.textContent = 'Aproxime as mãos e forme um T';
+            }
+          } else { view.handBase = null; view.tStartedAt = 0; status.textContent = 'Mostre as duas mãos para formar um T'; }
+        } catch (err) { status.textContent = `Detector: ${err.message}`; }
+        view.frame = requestAnimationFrame(animate);
+      };
+      view.frame = requestAnimationFrame(animate);
+    } catch (err) {
+      view.cameraStream?.getTracks().forEach((track) => track.stop()); view.cameraStream = null;
+      view.landmarker?.close(); view.landmarker = null;
+      status.textContent = `Câmera não ativada: ${err.message}`; button.textContent = '◎ Tentar câmera'; toast(`Não foi possível iniciar gestos: ${err.message}`, 'err');
+    } finally { button.disabled = false; }
+  }
+  if ($('#map-camera')) $('#map-camera').onclick = toggleCamera;
+  await loadGraph();
+  return () => { disposed = true; observer.disconnect(); clearTimeout(view.searchTimer); view.cameraStream?.getTracks().forEach((track) => track.stop()); view.landmarker?.close(); cancelAnimationFrame(view.frame); };
 }
 
 /* ---------------- chat ---------------- */

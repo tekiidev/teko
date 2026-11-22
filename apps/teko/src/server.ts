@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { PORT, HOST, APP_VERSION } from '@teko/ai/config';
+import { PORT, HOST, APP_VERSION, DATA_DIR, ROOT } from '@teko/ai/config';
 import {
   db,
   getSetting,
@@ -41,7 +41,15 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
 };
+
+const MEDIAPIPE_ASSETS = new Map<string, string>([
+  ['/vendor/mediapipe/vision_bundle.mjs', path.join(ROOT, 'node_modules/@mediapipe/tasks-vision/vision_bundle.mjs')],
+  ...['vision_wasm_internal.js', 'vision_wasm_internal.wasm', 'vision_wasm_module_internal.js', 'vision_wasm_module_internal.wasm']
+    .map((file): [string, string] => [`/vendor/mediapipe/wasm/${file}`, path.join(ROOT, 'node_modules/@mediapipe/tasks-vision/wasm', file)]),
+]);
 
 function json(res, status, data) {
   const body = JSON.stringify(data);
@@ -65,6 +73,17 @@ async function readJson(req) {
 }
 
 function serveStatic(res, pathname) {
+  if (MEDIAPIPE_ASSETS.has(pathname)) {
+    const filePath = MEDIAPIPE_ASSETS.get(pathname);
+    try {
+      const data = fs.readFileSync(filePath);
+      res.writeHead(200, { 'content-type': MIME[path.extname(filePath)] || 'application/octet-stream', 'cache-control': 'public, max-age=86400' });
+      return res.end(data);
+    } catch {
+      res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' });
+      return res.end('runtime de gestos ausente; rode npm install');
+    }
+  }
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel));
   if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
@@ -321,6 +340,78 @@ function buildCopyContext(url) {
   return { context: sections.filter(Boolean).join('\n\n').slice(0, 24000), generatedAt: nowIso() };
 }
 
+function contextGraph() {
+  const nodes = [{
+    id: 'root', type: 'root', label: 'Teko', projectId: null,
+    detail: 'Contexto local dos seus projetos, conversas e decisões. A busca roda no seu Mac.',
+  }];
+  const edges = [];
+  const projects = db.prepare('SELECT * FROM projects ORDER BY name COLLATE NOCASE').all();
+  const add = (node, parentId) => {
+    nodes.push(node);
+    edges.push({ source: parentId, target: node.id });
+  };
+
+  for (const p of projects) {
+    const projectNodeId = `project:${p.id}`;
+    add({
+      id: projectNodeId, type: 'project', projectId: p.id, label: p.name,
+      detail: [p.description, `Stack: ${safeJson(p.stack, []).join(', ') || 'não informada'}`, p.path].filter(Boolean).join('\n'),
+    }, 'root');
+
+    const sessions = db.prepare(
+      'SELECT id, title, summary, updated_at FROM sessions WHERE project_id = ? ORDER BY updated_at DESC',
+    ).all(p.id);
+    for (const s of sessions) {
+      const recent = db.prepare(
+        'SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 2',
+      ).all(s.id).reverse();
+      const transcript = recent.map((m) => `${m.role === 'user' ? 'Felipe' : 'Teko'}: ${String(m.content).slice(-700)}`).join('\n\n');
+      add({
+        id: `session:${s.id}`, type: 'session', projectId: p.id, sessionId: s.id,
+        label: s.title || 'Conversa', updatedAt: s.updated_at,
+        detail: [s.summary, transcript].filter(Boolean).join('\n\n') || 'Conversa sem resumo ou mensagens.',
+      }, projectNodeId);
+    }
+
+    const decisions = db.prepare(
+      'SELECT id, title, status, decision, consequences FROM decisions WHERE project_id = ? ORDER BY created_at DESC',
+    ).all(p.id);
+    for (const d of decisions) add({
+      id: `decision:${d.id}`, type: 'decision', projectId: p.id, label: d.title,
+      detail: [`Status: ${d.status}`, d.decision, d.consequences ? `Consequências: ${d.consequences}` : ''].filter(Boolean).join('\n'),
+    }, projectNodeId);
+
+    const memories = db.prepare(
+      'SELECT id, kind, title, content, created_at FROM memory WHERE project_id = ? ORDER BY created_at DESC',
+    ).all(p.id);
+    for (const m of memories) {
+      const memoryId = `memory:${m.id}`;
+      add({
+        id: memoryId, type: m.kind === 'ramificacao' ? 'branch' : 'memory', projectId: p.id, label: m.title || m.kind,
+        updatedAt: m.created_at, detail: String(m.content).slice(0, 1800),
+      }, projectNodeId);
+      if (m.source && nodes.some((node) => node.id === m.source)) edges.push({ source: m.source, target: memoryId });
+    }
+
+    const bugs = db.prepare(
+      "SELECT id, title, severity, status, actual, expected FROM bugs WHERE project_id = ? AND status != 'resolvido' ORDER BY updated_at DESC",
+    ).all(p.id);
+    for (const b of bugs) add({
+      id: `bug:${b.id}`, type: 'bug', projectId: p.id, label: b.title,
+      detail: [`${b.severity} · ${b.status}`, b.actual ? `Atual: ${b.actual}` : '', b.expected ? `Esperado: ${b.expected}` : ''].filter(Boolean).join('\n'),
+    }, projectNodeId);
+  }
+
+  const looseSessions = db.prepare(
+    'SELECT id, title, summary, updated_at FROM sessions WHERE project_id IS NULL ORDER BY updated_at DESC',
+  ).all();
+  for (const s of looseSessions) {
+    add({ id: `session:${s.id}`, type: 'session', projectId: null, sessionId: s.id, label: s.title || 'Conversa', updatedAt: s.updated_at, detail: s.summary || 'Conversa sem projeto associado.' }, 'root');
+  }
+  return { generatedAt: nowIso(), nodes, edges };
+}
+
 // Só o app desktop do Teko (Tauri) pode chamar a API de outra origem.
 const DESKTOP_ORIGINS = new Set(['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']);
 
@@ -330,6 +421,8 @@ function allowDesktop(req, res) {
   res.setHeader('access-control-allow-origin', origin);
   res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
   res.setHeader('access-control-allow-headers', 'content-type');
+  // WebViews recentes podem exigir autorização explícita ao acessar o loopback local.
+  res.setHeader('access-control-allow-private-network', 'true');
   res.setHeader('vary', 'origin');
   return true;
 }
@@ -395,6 +488,14 @@ async function dispatch(req, res) {
   const [, resource, id, sub] = segments;
 
   if (resource === 'voice') return handleVoice(req, res, id, method);
+  if (resource === 'vision' && id === 'hand_landmarker.task' && method === 'GET') {
+    try {
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'public, max-age=86400' });
+      return res.end(fs.readFileSync(path.join(DATA_DIR, 'models/hand_landmarker.task')));
+    } catch {
+      return json(res, 503, { error: 'modelo de gestos ausente; rode npm run vision:setup' });
+    }
+  }
 
   if (resource === 'bootstrap' && method === 'GET') return json(res, 200, publicBootstrap());
   if (resource === 'usage' && method === 'GET') return json(res, 200, usageSummary());
@@ -416,6 +517,7 @@ async function dispatch(req, res) {
     if (result.error) return json(res, result.status, { error: result.error });
     return json(res, 200, result);
   }
+  if (resource === 'graph' && method === 'GET') return json(res, 200, contextGraph());
 
   if (resource === 'chat' && method === 'POST') return handleChat(req, res);
 

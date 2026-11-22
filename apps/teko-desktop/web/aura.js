@@ -10,6 +10,7 @@ const CORES = {
   ouvindo: [[207, 234, 255], [95, 212, 255]],
   pensando: [[46, 155, 255], [95, 212, 255]],
   falando: [[46, 155, 255], [242, 247, 255]],
+  gesto: [[95, 212, 255], [242, 247, 255]],
 };
 
 export function criarAura(canvas) {
@@ -19,6 +20,10 @@ export function criarAura(canvas) {
   let nivel = 0; // volume suavizado, 0..1
   let alpha = 0; // visibilidade geral
   let t = 0;
+  let formaT = false;
+  let misturaT = 0;
+  let janelaCamera = false;
+  let misturaJanela = 0;
 
   // Pontos: 4 anéis + pontas curvas como as da logo (seno elevado gera "garras").
   const pontos = [];
@@ -37,6 +42,39 @@ export function criarAura(canvas) {
       pontos.push({ a: base + p * 0.55, r: 0.8 + p * 0.32, anel: 4, fase: p * 6, brilho: 1 - p * 0.6, garra: true });
     }
   }
+
+  // T compacto: a barra horizontal representa as duas mãos; o traço curto é só a junção.
+  // Isso evita que a aura pareça desenhar braços ou um corpo inteiro.
+  const barraT = Math.floor(pontos.length * 0.52);
+  pontos.forEach((p, i) => {
+    if (i < barraT) {
+      p.tx = -0.76 + (i / Math.max(1, barraT - 1)) * 1.52;
+      p.ty = -0.2 + Math.sin(p.fase * 3) * 0.018;
+    } else {
+      const progresso = (i - barraT) / Math.max(1, pontos.length - barraT - 1);
+      p.tx = Math.sin(p.fase * 5) * 0.022;
+      p.ty = -0.2 + progresso * 0.68;
+    }
+
+    // Um retângulo central para a janela da câmera, contornado por mini pixels.
+    const metadeLargura = 0.92, metadeAltura = 0.66;
+    const largura = metadeLargura * 2, altura = metadeAltura * 2;
+    const percurso = (i / pontos.length) * 2 * (largura + altura);
+    if (percurso < largura) {
+      p.jx = -metadeLargura + percurso;
+      p.jy = -metadeAltura;
+    } else if (percurso < largura + altura) {
+      p.jx = metadeLargura;
+      p.jy = -metadeAltura + percurso - largura;
+    } else if (percurso < largura * 2 + altura) {
+      p.jx = metadeLargura - (percurso - largura - altura);
+      p.jy = metadeAltura;
+    } else {
+      p.jx = -metadeLargura;
+      p.jy = metadeAltura - (percurso - largura * 2 - altura);
+    }
+    p.puloJanela = i % 3 === 0;
+  });
 
   function redimensionar() {
     dpr = window.devicePixelRatio || 1;
@@ -67,7 +105,9 @@ export function criarAura(canvas) {
     const cx = w / 2;
     const cy = h * 0.44;
     const R = Math.min(w, h) * 0.36;
-    const par = CORES[estado] || CORES.pensando;
+    misturaT += (((formaT && !janelaCamera) ? 1 : 0) - misturaT) * (formaT && !janelaCamera ? 0.16 : 0.08);
+    misturaJanela += ((janelaCamera ? 1 : 0) - misturaJanela) * (janelaCamera ? 0.14 : 0.07);
+    const par = formaT ? CORES.gesto : (CORES[estado] || CORES.pensando);
 
     // Brilho de fundo bem fraco.
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.3);
@@ -94,8 +134,21 @@ export function criarAura(canvas) {
         r = p.r * (1 + nivel * 0.12) + onda * nivel * 0.06;
         a += t * 0.12;
       }
-      const x = cx + Math.cos(a) * r * R;
-      const y = cy + Math.sin(a) * r * R;
+      let x = cx + Math.cos(a) * r * R;
+      let y = cy + Math.sin(a) * r * R;
+      if (misturaT > 0.001) {
+        const alvoX = cx + p.tx * R;
+        const alvoY = cy + p.ty * R;
+        x += (alvoX - x) * misturaT;
+        y += (alvoY - y) * misturaT;
+      }
+      if (misturaJanela > 0.001) {
+        const janelaX = cx + p.jx * R;
+        const janelaY = h / 2 + p.jy * R;
+        x += (janelaX - x) * misturaJanela;
+        y += (janelaY - y) * misturaJanela;
+      }
+      if (misturaJanela > 0.72 && p.puloJanela) continue;
       // Encaixa na grade pra parecer pixel.
       const px = Math.round(x / PIXEL) * PIXEL;
       const py = Math.round(y / PIXEL) * PIXEL;
@@ -117,6 +170,8 @@ export function criarAura(canvas) {
   return {
     set estado(valor) { estado = valor; },
     get estado() { return estado; },
+    formaT(valor) { formaT = Boolean(valor); },
+    janelaCamera(valor) { janelaCamera = Boolean(valor); },
     /** Volume bruto 0..1; suaviza subindo rápido e descendo devagar. */
     volume(v) { nivel += (Math.min(1, v) - nivel) * (v > nivel ? 0.5 : 0.12); },
   };

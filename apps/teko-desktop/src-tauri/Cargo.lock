@@ -3592,6 +3592,7 @@ dependencies = [
 name = "teko-desktop"
 version = "0.1.0"
 dependencies = [
+ "reqwest",
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",

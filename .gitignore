@@ -1,5 +1,7 @@
 node_modules/
 data/
+apps/teko-desktop/web/vendor/mediapipe/
+apps/teko-desktop/web/models/hand_landmarker.task
 .env
 *.log
 .DS_Store
