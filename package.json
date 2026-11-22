@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Teko: orquestrador de IA aberto e seguro, com módulos de carreira e finanças.",
   "author": "Felipe Oliveira",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=22.5"
   },

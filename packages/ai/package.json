@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Orquestrador de IA do Teko: providers, roteamento, fallback, uso e ferramentas.",
+  "license": "AGPL-3.0-only",
   "exports": {
     "./*": "./src/*.ts"
   },
