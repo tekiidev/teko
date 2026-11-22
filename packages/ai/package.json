@@ -12,6 +12,7 @@
     "reset": "tsx scripts/reset.ts",
     "index": "tsx scripts/index.ts",
     "typecheck": "tsc --noEmit -p .",
-    "test": "ORQ_DATA_DIR=$(mktemp -d) tsx --test --test-concurrency=1 test/*.test.ts"
+    "test": "ORQ_DATA_DIR=$(mktemp -d) tsx --test --test-concurrency=1 test/*.test.ts",
+    "skills:import": "tsx scripts/import-skills.ts"
   }
 }

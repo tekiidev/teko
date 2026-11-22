@@ -19,6 +19,7 @@ import {
 import { usageSummary, recordUsage } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
 import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
+import { deleteSkill, findImportable, getSkill, importSkills, listSkills, parseSkillCommand } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
 import * as figma from '@teko/ai/connectors/figma';
@@ -220,7 +221,9 @@ async function handleChat(req, res) {
   const system = buildSystemPrompt({ projectId: session.project_id, profileId });
   // Contexto volátil entra só na última mensagem: o system fica idêntico entre mensagens
   // e o prefixo (ferramentas + system) é reaproveitado do cache do provider.
-  const turnContext = buildTurnContext({ retrieved });
+  // `/nome` no começo ativa a skill só nesta mensagem (sem chamada extra ao modelo).
+  const command = parseSkillCommand(text);
+  const turnContext = buildTurnContext({ retrieved, skill: command?.skill || null });
   const modelHistory = history.map((message, index) =>
     index === history.length - 1 ? { ...message, content: withTurnContext(message.content, turnContext) } : message,
   );
@@ -836,6 +839,28 @@ async function dispatch(req, res) {
     if (method === 'DELETE' && id) {
       db.prepare('DELETE FROM bugs WHERE id = ?').run(id);
       return json(res, 200, { ok: true });
+    }
+  }
+
+  if (resource === 'skills') {
+    const summary = (skill) => ({ name: skill.name, description: skill.description, chars: skill.chars });
+    if (method === 'GET' && id === 'importable') {
+      const installed = new Set(listSkills().map((skill) => skill.name));
+      return json(res, 200, findImportable().map(({ name, description }) => ({ name, description, installed: installed.has(name) })));
+    }
+    if (method === 'GET' && id) {
+      const skill = getSkill(id);
+      return skill ? json(res, 200, skill) : json(res, 404, { error: 'skill não encontrada' });
+    }
+    if (method === 'GET') return json(res, 200, listSkills().map(summary));
+    // Só importa da pasta padrão (~/.claude/skills), por nome: a API não lê caminhos arbitrários.
+    if (method === 'POST' && id === 'import') {
+      const body = await readJson(req);
+      const names = Array.isArray(body.names) ? body.names.map(String) : [];
+      return json(res, 200, { imported: importSkills(names) });
+    }
+    if (method === 'DELETE' && id) {
+      return deleteSkill(id) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'skill não encontrada' });
     }
   }
 

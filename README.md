@@ -132,6 +132,24 @@ O índice usa **FTS5 do próprio SQLite** (`unicode61`, sem acento), com BM25 e 
 - Na conversa, os 5 trechos mais relevantes da sua mensagem entram no system prompt (RAG local).
 - A aba **Projetos** tem busca com `arquivo:linha` e trecho destacado.
 
+## Skills
+
+Skills são pastas com um `SKILL.md` (mesmo formato das skills do Claude): frontmatter com `name` e `description`, e as instruções em Markdown.
+
+- Ficam em `data/skills/`, **fora do git**, porque costumam ter dados pessoais
+- O system prompt leva só o índice (nome + descrição), que é estável e fica no cache do provider
+- `/nome` no começo da mensagem ativa a skill só naquela mensagem, sem chamada extra ao modelo. Ex.: `/vagas <texto da vaga>`
+- Em projetos com ferramentas, a IA pode carregar a skill sozinha com `use_skill`
+
+Importar do Claude (`~/.claude/skills`):
+
+```bash
+npm run skills:import                 # lista o que dá pra importar
+npm run skills:import -- vagas        # importa por nome
+```
+
+Pela API: `GET /api/skills`, `GET /api/skills/importable`, `POST /api/skills/import` (`{ "names": [...] }`), `DELETE /api/skills/:nome`.
+
 ## API
 
 | Método | Rota | Uso |
