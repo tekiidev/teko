@@ -20,7 +20,8 @@ import numpy as np
 
 REFERENCIA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else ""
 PORTA = int(sys.argv[2]) if len(sys.argv) > 2 else 4781
-MODELO = os.environ.get("TEKO_TTS_MODEL", "mlx-community/chatterbox-multilingual-v3")
+# 8-bit: gera mais rápido do que fala no M5 (sem pausas entre frases). 4-bit é ainda mais rápido.
+MODELO = os.environ.get("TEKO_TTS_MODEL", "mlx-community/chatterbox-8bit")
 MAX_CHARS = 600
 
 if not REFERENCIA or not os.path.exists(REFERENCIA):
