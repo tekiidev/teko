@@ -1,0 +1,15 @@
+{
+  "name": "@teko/ai",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Orquestrador de IA do Teko: providers, roteamento, fallback, uso e ferramentas.",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "reset": "tsx scripts/reset.ts",
+    "index": "tsx scripts/index.ts",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

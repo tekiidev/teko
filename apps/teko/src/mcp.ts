@@ -5,8 +5,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { db, newId, nowIso, safeJson, getSetting } from './db.js';
-import { clearIndex, ensureIndex, indexProject, search } from './search-index.js';
+import { db, newId, nowIso, safeJson, getSetting } from '@teko/ai/db';
+import { clearIndex, ensureIndex, indexProject, search } from '@teko/ai/search-index';
 
 const server = new Server(
   { name: 'teko-context', version: '0.3.0' },

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-export const PUBLIC_DIR = path.join(ROOT, 'public');
+// Raiz do monorepo: .env e data/ ficam lá, não dentro do pacote.
+export const ROOT = process.env.TEKO_ROOT || path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 export const DATA_DIR = process.env.ORQ_DATA_DIR || path.join(ROOT, 'data');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });

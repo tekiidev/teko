@@ -3,27 +3,30 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "teko — orquestrador local de IAs por Felipe Oliveira: contexto unificado, roteamento por perfil, fallback automático, uso, projetos e bugs.",
+  "description": "Teko: orquestrador de IA aberto e seguro, com módulos de carreira e finanças.",
   "author": "Felipe Oliveira",
   "license": "MIT",
   "engines": {
     "node": ">=22.5"
   },
+  "packageManager": "npm@11.19.1",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "start": "tsx src/server.ts",
-    "dev": "tsx watch src/server.ts",
-    "mcp": "tsx src/mcp.ts",
-    "discover:projects": "tsx scripts/discover-projects.ts",
-    "reset": "tsx scripts/reset.ts",
-    "index": "tsx scripts/index.ts",
-    "typecheck": "tsc --noEmit"
+    "start": "npm run start -w @teko/app",
+    "dev": "turbo run dev",
+    "mcp": "npm run mcp -w @teko/app",
+    "discover:projects": "npm run discover:projects -w @teko/app --",
+    "reset": "npm run reset -w @teko/ai",
+    "index": "npm run index -w @teko/ai",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
+    "turbo": "^2.11.13",
     "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2"
   }
 }
