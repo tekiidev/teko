@@ -88,6 +88,23 @@ npm run voz                     # abre o app (ícone na barra de menu)
 - Na primeira vez, o macOS pede permissão de microfone
 - "Teko" como palavra de ativação, sem atalho, é a próxima fase
 
+## Cofu
+
+App da feira, para qualquer pessoa: fale ou escreva o que vai comprar e o Cofu monta a lista. Funciona offline (a IA só online). Fica em `apps/cofu` e é feito com o Teko.
+
+<p align="center"><img src="docs/cofu-fase-1.png" alt="Cofu" width="320" /></p>
+
+```bash
+npm run cofu              # http://localhost:4790 (usa o GOOGLE_API_KEY do .env da raiz)
+```
+
+- Lista por texto ou voz (microfone do navegador); a IA devolve item, quantidade, unidade, categoria e preço estimado, validados com Zod
+- Sem internet ou se a IA falhar, um leitor simples no aparelho monta a lista mesmo assim
+- Tocar no item = ele cai no cofo; o cofo enche e muda de cor quando passa do orçamento
+- "Tem em casa" vai pra prateleira; "Nova feira" esvazia o cofo
+- Dados só no aparelho (IndexedDB); a chave da IA fica no servidor, com limite de pedidos por IP
+- Preços são estimativas da IA, não preços reais de mercado (isso é a fase 2)
+
 ## O que já funciona
 
 - **Chat com roteamento por perfil** — `código`, `projeto/arquitetura`, `documentação`, `revisão`, `bug`, `caveman (econômico)`.
@@ -137,16 +154,19 @@ apps/
     src/discover-projects.ts
     public/               SPA vanilla (sem build)
   cli/                    @teko/cli: comando `teko` no terminal
+    bin/teko.mjs          entrada (carrega o TypeScript via tsx)
+    src/cli.ts            conversa, pergunta única e comandos
   teko-desktop/           @teko/desktop: voz no Mac (Tauri) com a aura
     web/                  aura (canvas) e fluxo de voz
     src-tauri/            atalho global, janela transparente, barra de menu
-    bin/teko.mjs          entrada (carrega o TypeScript via tsx)
-    src/cli.ts            conversa, pergunta única e comandos
+  cofu/                   @teko/cofu: app da feira (Next.js, PWA offline)
+    src/app/api/lista     rota da IA (só servidor)
+    src/lib/              leitor sem IA, IndexedDB, orçamento
 ```
 
 Os apps importam o orquestrador por subcaminho, por exemplo `@teko/ai/router`.
 
-Próximos espaços previstos: `packages/career-core`, `packages/finance-core`, `apps/cofu`, `apps/teko-desktop`.
+Próximos espaços previstos: `packages/career-core`, `packages/finance-core`, `apps/teko-desktop`.
 
 ### Como o fallback decide
 
