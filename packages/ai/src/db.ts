@@ -1,10 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import crypto from 'node:crypto';
 import { DB_PATH } from './config.js';
-import { PROVIDERS, MODELS, PROFILES } from './catalog.js';
+import { PROVIDERS, MODELS, PROFILES, MODEL_UPGRADES } from './catalog.js';
 
 // SQLite row types follow the dynamic schema; keep queries flexible during this migration.
 export const db: any = new DatabaseSync(DB_PATH);
+// Painel e servidor MCP abrem o mesmo banco: espera o lock em vez de falhar na hora.
+db.exec('PRAGMA busy_timeout = 5000;');
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
@@ -234,6 +236,27 @@ function ensureProfiles() {
   }
 }
 
+/** Coloca cada modelo novo logo antes do antigo que ele substitui, preservando a ordem do usuário. */
+export function upgradeChain(chain: string[], upgrades: Record<string, string> = MODEL_UPGRADES) {
+  const out = [];
+  for (const id of chain) {
+    const next = upgrades[id];
+    if (next && !chain.includes(next) && !out.includes(next)) out.push(next);
+    out.push(id);
+  }
+  return out;
+}
+
+function upgradeProfileChains() {
+  for (const profile of db.prepare('SELECT id, chain FROM profiles').all()) {
+    const chain = safeJson(profile.chain, []);
+    const upgraded = upgradeChain(chain);
+    if (upgraded.length !== chain.length) {
+      db.prepare('UPDATE profiles SET chain = ? WHERE id = ?').run(JSON.stringify(upgraded), profile.id);
+    }
+  }
+}
+
 seed();
 function ensureModels() {
   const insert = db.prepare(
@@ -263,6 +286,7 @@ ensureColumns('usage_events', {
 
 ensureModels();
 ensureProfiles();
+upgradeProfileChains();
 
 export function getModel(id) {
   const row = db.prepare('SELECT * FROM models WHERE id = ?').get(id);

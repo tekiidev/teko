@@ -51,6 +51,7 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 - **Busca no projeto** — índice local FTS5 (BM25) sobre código, docs, memória, decisões e bugs. Os melhores trechos entram automaticamente no contexto da conversa.
 - **Fallback automático** — 429, cota esgotada, chave inválida, 5xx, timeout: o modelo entra em cooldown e a fila continua.
 - **Prompt caching**: o system prompt fica estável entre mensagens (data e trechos da busca vão junto da mensagem), com breakpoints de cache na Anthropic e aproveitamento do cache automático de OpenAI, Gemini e DeepSeek. Tokens em cache, latência e economia estimada ficam registrados por chamada.
+- **Cache local de respostas**: a mesma pergunta no mesmo contexto volta do SQLite, sem nova chamada ao modelo. Vale só para conversas sem ferramentas, expira em 24 h (configurável) e o botão "Sem cache" força uma resposta nova. Cada acerto fica registrado como `cache_hit`, com o custo poupado.
 - **Escolha manual + fallback** — se você escolher um modelo e ele cair, os seguintes do perfil continuam valendo.
 - **Uso** — tokens e custo por sessão, hoje, semana, mês e total; série de 14 dias; quebra por modelo e provider.
 - **Orçamento por modelo** — limite de tokens por semana/mês; ao estourar, o modelo sai da fila.
@@ -131,6 +132,24 @@ O índice usa **FTS5 do próprio SQLite** (`unicode61`, sem acento), com BM25 e 
 - `POST /api/search/index` reindexa; o índice também é criado ao salvar o caminho do projeto.
 - Na conversa, os 5 trechos mais relevantes da sua mensagem entram no system prompt (RAG local).
 - A aba **Projetos** tem busca com `arquivo:linha` e trecho destacado.
+
+## Skills
+
+Skills são pastas com um `SKILL.md` (mesmo formato das skills do Claude): frontmatter com `name` e `description`, e as instruções em Markdown.
+
+- Ficam em `data/skills/`, **fora do git**, porque costumam ter dados pessoais
+- O system prompt leva só o índice (nome + descrição), que é estável e fica no cache do provider
+- `/nome` no começo da mensagem ativa a skill só naquela mensagem, sem chamada extra ao modelo. Ex.: `/vagas <texto da vaga>`
+- Em projetos com ferramentas, a IA pode carregar a skill sozinha com `use_skill`
+
+Importar do Claude (`~/.claude/skills`):
+
+```bash
+npm run skills:import                 # lista o que dá pra importar
+npm run skills:import -- vagas        # importa por nome
+```
+
+Pela API: `GET /api/skills`, `GET /api/skills/importable`, `POST /api/skills/import` (`{ "names": [...] }`), `DELETE /api/skills/:nome`.
 
 ## API
 

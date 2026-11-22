@@ -17,3 +17,9 @@ test('contexto volátil vai junto da mensagem, não do system', () => {
   assert.equal(withTurnContext('pergunta', ctx), `${ctx}\n\npergunta`);
   assert.equal(withTurnContext('pergunta', ''), 'pergunta');
 });
+
+test('skill ativada entra no contexto da mensagem', () => {
+  const ctx = buildTurnContext({ skill: { name: 'vagas', description: 'd', body: 'Responda em tópicos.', chars: 10 } });
+  assert.match(ctx, /skill \/vagas/);
+  assert.match(ctx, /<skill nome="vagas">\nResponda em tópicos.\n<\/skill>/);
+});

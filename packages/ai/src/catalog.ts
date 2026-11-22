@@ -78,7 +78,10 @@ export const PROVIDERS = [
 
 // priceIn / priceOut em USD por 1M tokens (aproximado, edite conforme seu plano).
 export const MODELS = [
-  // Anthropic
+  // Anthropic (thinking adaptativo sempre ligado; Haiku 5.5 passa a US$ 0,50/2,50 acima de 100K tokens de prompt)
+  { id: 'anthropic/claude-opus-5-5', provider: 'anthropic', model: 'claude-opus-5-5', label: 'Claude Opus 5.5', ctx: 1000000, priceIn: 4, priceOut: 20, tags: ['plan', 'review', 'code'] },
+  { id: 'anthropic/claude-sonnet-5-5', provider: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', ctx: 1000000, priceIn: 2, priceOut: 10, tags: ['code', 'docs', 'review', 'plan'] },
+  { id: 'anthropic/claude-haiku-5-5', provider: 'anthropic', model: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', ctx: 1000000, priceIn: 0.1, priceOut: 0.5, tags: ['bug', 'docs', 'economic'] },
   { id: 'anthropic/claude-sonnet-4-5', provider: 'anthropic', model: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', ctx: 200000, priceIn: 3, priceOut: 15, tags: ['code', 'docs', 'review', 'plan'] },
   { id: 'anthropic/claude-opus-4-1', provider: 'anthropic', model: 'claude-opus-4-1', label: 'Claude Opus 4.1', ctx: 200000, priceIn: 15, priceOut: 75, tags: ['plan', 'review'] },
   { id: 'anthropic/claude-haiku-4-5', provider: 'anthropic', model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', ctx: 200000, priceIn: 1, priceOut: 5, tags: ['bug', 'docs'] },
@@ -118,6 +121,13 @@ const BASE_SYSTEM = [
   'Se faltar informação essencial, faça no máximo 2 perguntas curtas antes de assumir.',
 ].join(' ');
 
+// Modelos substituídos: em bancos existentes, o substituto entra na fila logo antes do antigo.
+export const MODEL_UPGRADES: Record<string, string> = {
+  'anthropic/claude-sonnet-4-5': 'anthropic/claude-sonnet-5-5',
+  'anthropic/claude-opus-4-1': 'anthropic/claude-opus-5-5',
+  'anthropic/claude-haiku-4-5': 'anthropic/claude-haiku-5-5',
+};
+
 export const PROFILES = [
   {
     id: 'code',
@@ -125,7 +135,7 @@ export const PROFILES = [
     description: 'Implementar, refatorar e depurar código de verdade.',
     systemPrompt: `${BASE_SYSTEM} Modo: implementação. Entregue código completo e pronto pra colar, com o caminho do arquivo quando fizer sentido.`,
     chain: [
-      'anthropic/claude-sonnet-4-5',
+      'anthropic/claude-sonnet-5-5',
       'openai/gpt-5.1-codex',
       'qwen/qwen3-coder-plus',
       'deepseek/deepseek-chat',
@@ -139,7 +149,7 @@ export const PROFILES = [
     description: 'Decidir escopo, arquitetura, trade-offs e próximos passos.',
     systemPrompt: `${BASE_SYSTEM} Modo: arquitetura e produto. Sempre explicite trade-offs, riscos e o menor próximo passo executável.`,
     chain: [
-      'anthropic/claude-opus-4-1',
+      'anthropic/claude-opus-5-5',
       'google/gemini-3-pro',
       'openai/gpt-5.1',
       'moonshot/kimi-k2',
@@ -153,7 +163,7 @@ export const PROFILES = [
     description: 'README, ADRs, docs de API, textos de projeto.',
     systemPrompt: `${BASE_SYSTEM} Modo: documentação. Escreva em Markdown limpo, com títulos curtos, exemplos e nada de redundância.`,
     chain: [
-      'anthropic/claude-sonnet-4-5',
+      'anthropic/claude-sonnet-5-5',
       'google/gemini-3-pro',
       'openai/gpt-5.1-mini',
       'zhipu/glm-4.6',
@@ -168,7 +178,7 @@ export const PROFILES = [
     systemPrompt: `${BASE_SYSTEM} Modo: revisão crítica. Aponte problema, impacto e correção. Ordene por severidade. Não elogie de graça.`,
     chain: [
       'openai/gpt-5.1-codex',
-      'anthropic/claude-opus-4-1',
+      'anthropic/claude-opus-5-5',
       'xai/grok-code-fast-1',
       'deepseek/deepseek-reasoner',
       'ollama/qwen3.8:27b',
@@ -182,7 +192,7 @@ export const PROFILES = [
     systemPrompt: `${BASE_SYSTEM} Modo: caça-bug. Formato: sintoma → hipóteses → teste mais barato pra confirmar → correção → como evitar recorrência.`,
     chain: [
       'deepseek/deepseek-reasoner',
-      'anthropic/claude-haiku-4-5',
+      'anthropic/claude-haiku-5-5',
       'openai/gpt-5.1-mini',
       'qwen/qwen3-coder-plus',
       'ollama/qwen3:8b',
@@ -195,7 +205,7 @@ export const PROFILES = [
     systemPrompt: `${BASE_SYSTEM} Modo: caveman ultra-terse. Responda de forma direta e telegráfica, sem enrolação ou formalidades. Corte artigos e preâmbulos desnecessários. Código técnico preciso e cirúrgico. Máxima densidade de informação por token.`,
     chain: [
       'openai/gpt-6-luna',
-      'anthropic/claude-haiku-4-5',
+      'anthropic/claude-haiku-5-5',
       'deepseek/deepseek-chat',
       'google/gemini-2.5-flash',
       'openai/gpt-5.1-mini',

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { db, getSetting, safeJson } from './db.js';
+import { renderSkill, skillIndex, type Skill } from './skills.js';
 
 // Keep durable context small; details are retrieved from FTS5 for each prompt.
 const MAX_CONTEXT_CHARS = 12000;
@@ -117,6 +118,9 @@ export function buildSystemPrompt({ projectId = null, profileId = 'code' }: { pr
     if (ctx) chunks.push(ctx);
   }
 
+  const skills = skillIndex();
+  if (skills) chunks.push(skills);
+
   chunks.push(`## Sessão\nPerfil de tarefa: ${profile?.label || profileId}`);
 
   let text = chunks.join('\n\n');
@@ -127,8 +131,13 @@ export function buildSystemPrompt({ projectId = null, profileId = 'code' }: { pr
 }
 
 /** Contexto volátil da mensagem atual: data e trechos recuperados pela busca. */
-export function buildTurnContext({ retrieved = '', now = new Date() }: { retrieved?: string; now?: Date } = {}) {
+export function buildTurnContext({
+  retrieved = '',
+  skill = null,
+  now = new Date(),
+}: { retrieved?: string; skill?: Skill | null; now?: Date } = {}) {
   const chunks = [`Data de hoje: ${now.toLocaleDateString('pt-BR')}`];
+  if (skill) chunks.push(`O usuário ativou a skill /${skill.name}. Siga estas instruções nesta resposta:\n${renderSkill(skill)}`);
   if (retrieved) chunks.push(retrieved);
   return `<contexto_da_mensagem>\n${chunks.join('\n\n')}\n</contexto_da_mensagem>`;
 }

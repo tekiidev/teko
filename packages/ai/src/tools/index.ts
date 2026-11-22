@@ -2,6 +2,7 @@ import { listFiles, readFile, writeFile, editFile } from './fs.js';
 import { grep } from './search.js';
 import { runCommand } from './shell.js';
 import { search } from '../search-index.js';
+import { getSkill, renderSkill } from '../skills.js';
 
 const str = (description) => ({ type: 'string', description });
 const int = (description) => ({ type: 'integer', description });
@@ -130,6 +131,23 @@ export const TOOLS = [
     requiresApproval: true,
     run: runCommand,
     preview: (args) => `$ ${args.command}${args.cwd ? `\n(em ${args.cwd})` : ''}`,
+  },
+  {
+    name: 'use_skill',
+    description:
+      'Carrega as instruções completas de uma skill listada em "Skills disponíveis". Use antes de responder quando o pedido combinar com a descrição de uma skill.',
+    parameters: {
+      type: 'object',
+      properties: { name: str('nome exato da skill') },
+      required: ['name'],
+    },
+    requiresApproval: false,
+    run: async ({ name }) => {
+      const skill = getSkill(String(name || ''));
+      if (!skill) return { ok: false, output: `skill não encontrada: ${name}` };
+      return { ok: true, output: renderSkill(skill) };
+    },
+    preview: (args) => `carregar skill ${args.name}`,
   },
 ];
 

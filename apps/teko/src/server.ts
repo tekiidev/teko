@@ -18,7 +18,9 @@ import {
 } from '@teko/ai/db';
 import { usageSummary, recordUsage } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
+import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
 import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
+import { deleteSkill, findImportable, getSkill, importSkills, listSkills, parseSkillCommand } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
 import * as figma from '@teko/ai/connectors/figma';
@@ -130,6 +132,7 @@ function publicBootstrap() {
     usage: usageSummary(),
     settings: {
       router: getSetting('router', {}),
+      responseCache: { ...cacheSettings(), ...cacheStats() },
       budgets,
       globalNotes: getSetting('globalNotes', ''),
       keyHints,
@@ -220,7 +223,9 @@ async function handleChat(req, res) {
   const system = buildSystemPrompt({ projectId: session.project_id, profileId });
   // Contexto volátil entra só na última mensagem: o system fica idêntico entre mensagens
   // e o prefixo (ferramentas + system) é reaproveitado do cache do provider.
-  const turnContext = buildTurnContext({ retrieved });
+  // `/nome` no começo ativa a skill só nesta mensagem (sem chamada extra ao modelo).
+  const command = parseSkillCommand(text);
+  const turnContext = buildTurnContext({ retrieved, skill: command?.skill || null });
   const modelHistory = history.map((message, index) =>
     index === history.length - 1 ? { ...message, content: withTurnContext(message.content, turnContext) } : message,
   );
@@ -239,6 +244,7 @@ async function handleChat(req, res) {
       tools,
       projectPath,
       sessionId: session.id,
+      noCache: Boolean(body.noCache),
     })) {
       if (event.type === 'delta') acc += event.text;
       if (event.type === 'attempt') lastModel = event.modelId;
@@ -267,7 +273,7 @@ async function handleChat(req, res) {
       final.usage?.inputTokens || 0,
       final.usage?.outputTokens || 0,
       cost,
-      JSON.stringify({ label: final.label, tools: final.tools || [] }),
+      JSON.stringify({ label: final.label, tools: final.tools || [], cacheHit: Boolean(final.cacheHit) }),
       nowIso(),
     );
 
@@ -283,10 +289,11 @@ async function handleChat(req, res) {
       latencyMs: final.usage?.latencyMs ?? null,
       cost,
       saved: final.saved || 0,
+      kind: final.cacheHit ? 'cache_hit' : 'chat',
     });
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(nowIso(), session.id);
-    send('end', { ok: true, usage: final.usage, cost, modelId: final.modelId });
+    send('end', { ok: true, usage: final.usage, cost, modelId: final.modelId, cacheHit: Boolean(final.cacheHit) });
   } else {
     if (acc) {
       db.prepare(
@@ -839,6 +846,28 @@ async function dispatch(req, res) {
     }
   }
 
+  if (resource === 'skills') {
+    const summary = (skill) => ({ name: skill.name, description: skill.description, chars: skill.chars });
+    if (method === 'GET' && id === 'importable') {
+      const installed = new Set(listSkills().map((skill) => skill.name));
+      return json(res, 200, findImportable().map(({ name, description }) => ({ name, description, installed: installed.has(name) })));
+    }
+    if (method === 'GET' && id) {
+      const skill = getSkill(id);
+      return skill ? json(res, 200, skill) : json(res, 404, { error: 'skill não encontrada' });
+    }
+    if (method === 'GET') return json(res, 200, listSkills().map(summary));
+    // Só importa da pasta padrão (~/.claude/skills), por nome: a API não lê caminhos arbitrários.
+    if (method === 'POST' && id === 'import') {
+      const body = await readJson(req);
+      const names = Array.isArray(body.names) ? body.names.map(String) : [];
+      return json(res, 200, { imported: importSkills(names) });
+    }
+    if (method === 'DELETE' && id) {
+      return deleteSkill(id) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'skill não encontrada' });
+    }
+  }
+
   if (resource === 'memory') {
     if (method === 'GET') {
       const projectId = url.searchParams.get('projectId');
@@ -946,8 +975,19 @@ async function dispatch(req, res) {
     if ('globalNotes' in body) setSetting('globalNotes', String(body.globalNotes || ''));
     if ('router' in body) setSetting('router', body.router || {});
     if ('budgets' in body) setSetting('budgets', body.budgets || {});
+    if ('responseCache' in body) {
+      const cfg = body.responseCache || {};
+      const ttlHours = Number(cfg.ttlHours);
+      setSetting('responseCache', {
+        enabled: cfg.enabled !== false,
+        ...(Number.isFinite(ttlHours) && ttlHours > 0 ? { ttlHours: Math.min(ttlHours, 24 * 30) } : {}),
+      });
+    }
     return json(res, 200, { ok: true });
   }
+
+  if (resource === 'cache' && method === 'GET') return json(res, 200, { ...cacheSettings(), ...cacheStats() });
+  if (resource === 'cache' && method === 'DELETE') return json(res, 200, { removed: clearCache() });
 
   if (resource === 'figma') {
     if (id === 'status' && method === 'GET') return json(res, 200, figma.status());
@@ -1069,6 +1109,12 @@ const server = http.createServer((req, res) => {
     json(res, 500, { error: String(err.message || err) });
   });
 });
+
+try {
+  pruneCache({ ttlHours: cacheSettings().ttlHours });
+} catch (err) {
+  console.error('[cache]', err.message);
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`\n  teko v${APP_VERSION}`);

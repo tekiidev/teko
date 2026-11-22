@@ -5,6 +5,7 @@ import { tokensSince, windowStart } from './usage.js';
 import { createApproval, resolveApproval } from './approvals.js';
 import { getTool, executeTool, previewFor } from './tools/index.js';
 import { addUsage, computeCost, type Usage } from './pricing.js';
+import { cacheKey, cacheSettings, getCached, putCached } from './response-cache.js';
 
 export function resolveKey(provider) {
   if (!provider) return null;
@@ -102,6 +103,7 @@ function fmtTokens(n) {
 
 function describeError(err) {
   if (!err) return 'erro desconhecido';
+  if (err.code === 'refusal') return 'recusa do modelo';
   if (err.name === 'AbortError' || /aborted|timeout/i.test(err.message || '')) return 'timeout';
   if (err.status === 401 || err.status === 403) return 'chave inválida';
   if (err.status === 429) return 'limite de uso (429)';
@@ -262,8 +264,35 @@ export async function* runChat({
   projectPath = null,
   projectId = null,
   sessionId = null,
+  noCache = false,
 }) {
   const cfg = getSetting('router', {});
+  const activeTools = tools?.length && projectPath ? tools : null;
+
+  // Cache local: só sem ferramentas, porque aí a resposta depende só do que foi enviado.
+  const cacheCfg = cacheSettings();
+  const useCache = cacheCfg.enabled && !activeTools;
+  const key = useCache ? cacheKey({ profileId, modelId, system, messages }) : null;
+  if (key && !noCache) {
+    const hit = getCached(key, { ttlHours: cacheCfg.ttlHours });
+    if (hit) {
+      yield { type: 'delta', text: hit.text };
+      yield {
+        type: 'done',
+        cacheHit: true,
+        modelId: hit.model_id,
+        providerId: hit.provider_id,
+        label: hit.label,
+        usage: { inputTokens: 0, outputTokens: 0, latencyMs: 0, savedTokens: hit.input_tokens + hit.output_tokens },
+        cost: 0,
+        saved: hit.cost,
+        text: hit.text,
+        tools: [],
+      };
+      return;
+    }
+  }
+
   const maxAttempts = Number(cfg.maxAttempts || 6);
   const timeoutMs = Number(cfg.requestTimeoutMs || 180000);
   const maxRounds = Math.max(1, Math.min(Number(cfg.maxToolRounds || 8), 20));
@@ -281,7 +310,6 @@ export async function* runChat({
     return;
   }
 
-  const activeTools = tools?.length && projectPath ? tools : null;
   const conversation = messages.map((message) => ({ ...message }));
   const toolLog = [];
 
@@ -356,7 +384,8 @@ export async function* runChat({
         yield { type: 'aborted' };
         return;
       }
-      markFailure(model.id, outcome.error);
+      // Recusa depende do conteúdo, não da saúde do modelo: tenta o próximo sem cooldown.
+      if (outcome.error?.code !== 'refusal') markFailure(model.id, outcome.error);
       yield {
         type: 'fallback',
         from: model.id,
@@ -380,6 +409,17 @@ export async function* runChat({
 
     const calls = outcome.toolCalls || [];
     if (!calls.length) {
+      if (key && !toolLog.length) {
+        putCached(key, {
+          modelId: model.id,
+          providerId: provider.id,
+          label: model.label,
+          text: fullText,
+          inputTokens: totalUsage.inputTokens || 0,
+          outputTokens: totalUsage.outputTokens || 0,
+          cost: totalCost,
+        });
+      }
       yield {
         type: 'done',
         modelId: model.id,
@@ -398,6 +438,7 @@ export async function* runChat({
       role: 'assistant',
       content: outcome.text || '',
       toolCalls: calls,
+      providerContent: outcome.providerContent,
     });
 
     for (const call of calls) {

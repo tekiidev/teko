@@ -21,6 +21,7 @@
     "discover:projects": "npm run discover:projects -w @teko/app --",
     "reset": "npm run reset -w @teko/ai",
     "index": "npm run index -w @teko/ai",
+    "skills:import": "npm run skills:import -w @teko/ai --",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test"
   },
