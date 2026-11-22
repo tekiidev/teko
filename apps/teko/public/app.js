@@ -268,6 +268,7 @@ function mountChat() {
             <div class="composer-row">
               <span class="hint" id="composer-hint">fila: —</span>
               <span class="grow"></span>
+              <button class="btn sm ${state.chat.noCache ? 'primary' : ''}" id="no-cache" title="A próxima mensagem vai direto pro modelo, sem usar resposta guardada">Sem cache</button>
               <button class="btn sm" id="copy-chat-context" title="Gera de novo com as informações atuais">Copiar contexto</button>
               <button class="btn sm" id="summarize">Resumir</button>
               <button class="btn primary sm" id="send">Enviar</button>
@@ -298,6 +299,10 @@ function mountChat() {
     loadSessions();
   };
   $('#send').onclick = sendMessage;
+  $('#no-cache').onclick = (e) => {
+    state.chat.noCache = !state.chat.noCache;
+    e.currentTarget.classList.toggle('primary', state.chat.noCache);
+  };
   $('#summarize').onclick = summarizeSession;
   $('#copy-chat-context').onclick = async () => {
     try {
@@ -395,6 +400,7 @@ async function openSession(id) {
       role: m.role,
       content: m.content,
       model: m.meta?.label || m.model_id || null,
+      cacheHit: Boolean(m.meta?.cacheHit),
       usage: m.input_tokens || m.output_tokens ? { inputTokens: m.input_tokens, outputTokens: m.output_tokens } : null,
       cost: m.cost,
       notes: [],
@@ -462,6 +468,7 @@ function renderMessages() {
     const isUser = m.role === 'user';
     const meta = [];
     if (m.model) meta.push(`<span class="chip lime">${esc(m.model)}</span>`);
+    if (m.cacheHit) meta.push('<span class="chip lime">cache local</span>');
     if (m.usage) meta.push(`<span class="chip">${fmtTokens((m.usage.inputTokens || 0) + (m.usage.outputTokens || 0))} tok</span>`);
     if (m.cost) meta.push(`<span class="chip">${fmtCost(m.cost)}</span>`);
     if (m.notes?.length) meta.push(...m.notes.map((n) => `<span class="chip amber">${esc(n)}</span>`));
@@ -542,6 +549,7 @@ async function sendMessage() {
         projectId: state.chat.projectId,
         profileId: state.chat.profileId,
         modelId: state.chat.modelId || null,
+        noCache: Boolean(state.chat.noCache),
       },
       (ev) => {
         if (ev.type === 'meta' && ev.sessionId) {
@@ -564,6 +572,7 @@ async function sendMessage() {
           assistant.model = ev.label;
           assistant.usage = ev.usage;
           assistant.cost = ev.cost;
+          assistant.cacheHit = Boolean(ev.cacheHit);
           if (typeof ev.text === 'string') assistant.content = ev.text;
           if (Array.isArray(ev.tools)) assistant.tools = ev.tools;
           assistant.notes = assistant.notes.filter((n) => !n.startsWith('→'));
