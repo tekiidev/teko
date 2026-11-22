@@ -219,9 +219,34 @@ function ensureProfiles() {
   PROFILES.forEach((p, i) => {
     ins.run(p.id, p.label, p.description, JSON.stringify(p.chain), p.systemPrompt, i);
   });
+
+  // Make the low-cost OpenAI model available in existing economic profiles,
+  // while preserving any custom ordering already stored by the user.
+  const terse = db.prepare('SELECT chain FROM profiles WHERE id = ?').get('terse');
+  if (terse) {
+    const chain = safeJson(terse.chain, []);
+    if (!chain.includes('openai/gpt-6-luna')) {
+      db.prepare('UPDATE profiles SET chain = ? WHERE id = ?').run(
+        JSON.stringify(['openai/gpt-6-luna', ...chain]),
+        'terse',
+      );
+    }
+  }
 }
 
 seed();
+function ensureModels() {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO models
+       (id, provider_id, model, label, ctx, price_in, price_out, tags, sort)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  MODELS.forEach((model, index) => {
+    insert.run(model.id, model.provider, model.model, model.label, model.ctx, model.priceIn, model.priceOut, JSON.stringify(model.tags), index);
+  });
+}
+
+ensureModels();
 ensureProfiles();
 
 export function getModel(id) {

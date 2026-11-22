@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { PORT, HOST, PUBLIC_DIR, APP_VERSION } from './config.js';
 import {
   db,
@@ -207,7 +208,7 @@ async function handleChat(req, res) {
   if (project?.id) {
     try {
       ensureIndex(project.id);
-      retrieved = searchForPrompt(project.id, text, { limit: 5 });
+      retrieved = searchForPrompt(project.id, text, { limit: 4, maxChars: 3500 });
     } catch (err) {
       console.error('[busca]', err.message);
     }
@@ -336,6 +337,100 @@ function bugsExport(url) {
   return { body: JSON.stringify({ exportedAt: nowIso(), count: payload.length, bugs: payload }, null, 2), type: 'application/json; charset=utf-8' };
 }
 
+function buildCopyContext(url) {
+  const sessionId = url.searchParams.get('sessionId');
+  const projectId = url.searchParams.get('projectId');
+  const session = sessionId ? db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) : null;
+  if (sessionId && !session) return { error: 'conversa não encontrada', status: 404 };
+
+  const resolvedProjectId = projectId || session?.project_id || null;
+  const project = resolvedProjectId
+    ? db.prepare('SELECT * FROM projects WHERE id = ?').get(resolvedProjectId)
+    : null;
+  if (resolvedProjectId && !project) return { error: 'projeto não encontrado', status: 404 };
+
+  const sections = ['# Contexto para outra IA', `Gerado em: ${nowIso()}`];
+  if (project) {
+    sections.push(
+      `## Projeto: ${project.name}`,
+      project.description ? `Descrição: ${project.description}` : '',
+      project.path ? `Caminho local: ${project.path}` : '',
+      `Stack: ${safeJson(project.stack, []).join(', ') || 'não informada'}`,
+    );
+
+    const decisions = db.prepare(
+      'SELECT title, status, context, decision, consequences, created_at FROM decisions WHERE project_id = ? ORDER BY created_at DESC LIMIT 12',
+    ).all(project.id);
+    if (decisions.length) sections.push('## Decisões registradas', ...decisions.map((d) =>
+      `- [${d.status}] ${d.title}${d.decision ? `: ${d.decision}` : ''}${d.consequences ? ` (consequências: ${d.consequences})` : ''}`,
+    ));
+
+    const bugs = db.prepare(
+      "SELECT title, severity, status, area, repro, expected, actual FROM bugs WHERE project_id = ? AND status != 'resolvido' ORDER BY updated_at DESC LIMIT 10",
+    ).all(project.id);
+    if (bugs.length) sections.push('## Bugs em aberto', ...bugs.map((b) =>
+      `- [${b.severity}/${b.status}] ${b.title}${b.area ? ` (${b.area})` : ''}${b.actual ? ` — atual: ${b.actual}` : ''}${b.expected ? `; esperado: ${b.expected}` : ''}${b.repro ? `; reproduzir: ${b.repro}` : ''}`,
+    ));
+
+    const memories = db.prepare(
+      'SELECT kind, title, content, created_at FROM memory WHERE project_id = ? ORDER BY created_at DESC LIMIT 6',
+    ).all(project.id);
+    if (memories.length) sections.push('## Memória e notas recentes', ...memories.map((m) =>
+      `### ${m.title || m.kind}\n${String(m.content).slice(0, 800)}`,
+    ));
+
+    if (project.path && fs.existsSync(project.path)) {
+      try {
+        const git = (args: string[]) => execFileSync('git', args, {
+          cwd: project.path, encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+        const head = git(['log', '-1', '--format=%h %s (%cI)']);
+        const changed = git(['status', '--short']);
+        if (head) sections.push('## Último commit', head);
+        if (changed) sections.push('## Arquivos modificados no repositório', changed.slice(0, 5000));
+      } catch { /* projeto sem Git ou Git indisponível */ }
+    }
+
+    const sessions = db.prepare(
+      'SELECT id, title, summary, updated_at FROM sessions WHERE project_id = ? ORDER BY updated_at DESC LIMIT 5',
+    ).all(project.id);
+    if (sessions.length) sections.push('## Conversas recentes', ...sessions.map((s) =>
+      `- ${s.title} (${s.updated_at})${s.summary ? `\n  Resumo: ${s.summary}` : ''}`,
+    ));
+    const recentMessages = db.prepare(
+      `SELECT s.title AS session_title, m.role, m.content, m.meta, m.created_at
+         FROM messages m JOIN sessions s ON s.id = m.session_id
+        WHERE s.project_id = ? ORDER BY m.created_at DESC LIMIT 8`,
+    ).all(project.id).reverse();
+    if (recentMessages.length) sections.push('## Mudanças e confirmações recentes nas conversas', ...recentMessages.map((m) => {
+      const role = m.role === 'user' ? 'Usuário' : 'Assistente';
+      const meta = safeJson(m.meta, null);
+      const tools = (meta?.tools || []).map((t) => `${t.name}: ${t.status}${t.preview ? ` — ${t.preview}` : ''}`).join('; ');
+      return `**${m.session_title} · ${role}** (${m.created_at})\n${String(m.content || '').slice(-900)}${tools ? `\nAções: ${tools}` : ''}`;
+    }));
+  }
+
+  if (session) {
+    sections.push(`## Conversa: ${session.title}`, `Perfil: ${session.profile_id}`, `Atualizada em: ${session.updated_at}`);
+    if (session.summary) sections.push('### Resumo salvo', session.summary);
+    const messages = db.prepare(
+      'SELECT role, content, meta, created_at FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 10',
+    ).all(session.id).reverse();
+    if (messages.length) {
+      sections.push('### Trecho recente da conversa', ...messages.map((m) => {
+        const role = m.role === 'user' ? 'Usuário' : 'Assistente';
+        const content = String(m.content || '').slice(-1200);
+        const meta = safeJson(m.meta, null);
+        const tools = (meta?.tools || []).map((t) => `${t.name}: ${t.status}${t.preview ? ` — ${t.preview}` : ''}`).join('; ');
+        return `**${role}** (${m.created_at})\n${content}${tools ? `\nAções: ${tools}` : ''}`;
+      }));
+    }
+  }
+
+  if (!project && !session) sections.push('Sem conversa ou projeto selecionado.');
+  return { context: sections.filter(Boolean).join('\n\n').slice(0, 24000), generatedAt: nowIso() };
+}
+
 async function dispatch(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -362,6 +457,11 @@ async function dispatch(req, res) {
   }
   if (resource === 'health' && method === 'GET') {
     return json(res, 200, { ok: true, version: APP_VERSION, now: nowIso() });
+  }
+  if (resource === 'context' && method === 'GET') {
+    const result = buildCopyContext(url);
+    if (result.error) return json(res, result.status, { error: result.error });
+    return json(res, 200, result);
   }
 
   if (resource === 'chat' && method === 'POST') return handleChat(req, res);

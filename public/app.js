@@ -131,6 +131,27 @@ async function api(path, { method = 'GET', body } = {}) {
   return type.includes('json') ? res.json() : res.text();
 }
 
+async function copyContext({ sessionId = null, projectId = null } = {}) {
+  const params = new URLSearchParams();
+  if (sessionId) params.set('sessionId', sessionId);
+  if (projectId) params.set('projectId', projectId);
+  const result = await api(`/api/context?${params.toString()}`);
+  try {
+    await navigator.clipboard.writeText(result.context);
+  } catch {
+    const field = document.createElement('textarea');
+    field.value = result.context;
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (!copied) throw new Error('Não foi possível acessar a área de transferência');
+  }
+  toast('Contexto atualizado e copiado', 'ok');
+}
+
 /* ---------------- data ---------------- */
 
 async function loadBootstrap() {
@@ -247,6 +268,7 @@ function mountChat() {
             <div class="composer-row">
               <span class="hint" id="composer-hint">fila: —</span>
               <span class="grow"></span>
+              <button class="btn sm" id="copy-chat-context" title="Gera de novo com as informações atuais">Copiar contexto</button>
               <button class="btn sm" id="summarize">Resumir</button>
               <button class="btn primary sm" id="send">Enviar</button>
             </div>
@@ -277,6 +299,13 @@ function mountChat() {
   };
   $('#send').onclick = sendMessage;
   $('#summarize').onclick = summarizeSession;
+  $('#copy-chat-context').onclick = async () => {
+    try {
+      await copyContext({ sessionId: state.chat.sessionId, projectId: state.chat.projectId });
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  };
 
   $('#messages').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-approve],[data-deny]');
@@ -313,6 +342,8 @@ function mountChat() {
 function updateSendBtn() {
   const btn = $('#send');
   if (btn) btn.disabled = state.chat.streaming;
+  const copyBtn = $('#copy-chat-context');
+  if (copyBtn) copyBtn.disabled = state.chat.streaming;
 }
 
 async function updateRouteChip() {
@@ -748,6 +779,7 @@ async function renderProjectDetail(project) {
       <div class="card-head">
         <h2>${esc(project.name)}</h2>
         <span class="grow"></span>
+        <button class="btn sm" id="copy-project-context" title="Gera de novo com as informações atuais">Copiar contexto</button>
         <button class="btn sm" id="chat-project">Abrir no chat</button>
         <button class="btn sm danger" id="del-project">Excluir</button>
       </div>
@@ -833,6 +865,14 @@ async function renderProjectDetail(project) {
           </div>`).join('') : '<div class="dim small">Nenhum documento importado.</div>'}
       </div>
     </div>`;
+
+  $('#copy-project-context').onclick = async () => {
+    try {
+      await copyContext({ projectId: project.id });
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  };
 
   $('#save-project').onclick = async () => {
     try {
