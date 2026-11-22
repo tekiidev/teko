@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import crypto from 'node:crypto';
 import { DB_PATH } from './config.js';
-import { PROVIDERS, MODELS, PROFILES, MODEL_UPGRADES } from './catalog.js';
+import { PROVIDERS, MODELS, PROFILES, MODEL_UPGRADES, CHAIN_ADDITIONS } from './catalog.js';
 
 // SQLite row types follow the dynamic schema; keep queries flexible during this migration.
 export const db: any = new DatabaseSync(DB_PATH);
@@ -257,6 +257,28 @@ function upgradeProfileChains() {
   }
 }
 
+/** Insere `model` antes do primeiro id de `before` que existir na fila, ou no fim. */
+export function addToChain(chain: string[], model: string, before: string[] = []) {
+  if (chain.includes(model)) return chain;
+  const index = chain.findIndex((id) => before.includes(id));
+  return index === -1 ? [...chain, model] : [...chain.slice(0, index), model, ...chain.slice(index)];
+}
+
+/** Aplica cada adição de fila uma única vez; se o usuário remover depois, não volta. */
+function applyChainAdditions() {
+  const applied = new Set(getSetting('chainAdditions', []));
+  for (const add of CHAIN_ADDITIONS) {
+    if (applied.has(add.id)) continue;
+    const row = db.prepare('SELECT chain FROM profiles WHERE id = ?').get(add.profile);
+    if (row) {
+      const next = addToChain(safeJson(row.chain, []), add.model, add.before);
+      db.prepare('UPDATE profiles SET chain = ? WHERE id = ?').run(JSON.stringify(next), add.profile);
+    }
+    applied.add(add.id);
+  }
+  setSetting('chainAdditions', [...applied]);
+}
+
 seed();
 function ensureModels() {
   const insert = db.prepare(
@@ -287,6 +309,7 @@ ensureColumns('usage_events', {
 ensureModels();
 ensureProfiles();
 upgradeProfileChains();
+applyChainAdditions();
 
 export function getModel(id) {
   const row = db.prepare('SELECT * FROM models WHERE id = ?').get(id);

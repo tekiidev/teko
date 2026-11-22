@@ -92,9 +92,11 @@ export const MODELS = [
   { id: 'openai/gpt-5.1', provider: 'openai', model: 'gpt-5.1', label: 'GPT-5.1', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['plan', 'docs', 'review'] },
   { id: 'openai/gpt-5.1-mini', provider: 'openai', model: 'gpt-5.1-mini', label: 'GPT-5.1 mini', ctx: 400000, priceIn: 0.25, priceOut: 2, tags: ['docs', 'bug'] },
 
-  // Google
-  { id: 'google/gemini-3-pro', provider: 'google', model: 'gemini-3-pro', label: 'Gemini 3 Pro', ctx: 1000000, priceIn: 2, priceOut: 12, tags: ['plan', 'docs', 'code'] },
-  { id: 'google/gemini-2.5-flash', provider: 'google', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', ctx: 1000000, priceIn: 0.3, priceOut: 2.5, tags: ['docs', 'bug'] },
+  // Google: aliases "latest" sempre apontam pra versão atual (o Google aposenta versões fixas rápido).
+  // Preços estimados; ajuste na aba Modelos se mudar.
+  { id: 'google/gemini-flash-lite-latest', provider: 'google', model: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (latest)', ctx: 1000000, priceIn: 0.1, priceOut: 0.4, tags: ['code', 'docs', 'bug', 'economic'] },
+  { id: 'google/gemini-flash-latest', provider: 'google', model: 'gemini-flash-latest', label: 'Gemini Flash (latest)', ctx: 1000000, priceIn: 0.3, priceOut: 2.5, tags: ['code', 'docs', 'bug', 'economic'] },
+  { id: 'google/gemini-pro-latest', provider: 'google', model: 'gemini-pro-latest', label: 'Gemini Pro (latest)', ctx: 1000000, priceIn: 2, priceOut: 12, tags: ['plan', 'docs', 'code'] },
 
   // DeepSeek
   { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', label: 'DeepSeek V3', ctx: 128000, priceIn: 0.28, priceOut: 0.42, tags: ['code', 'bug'] },
@@ -126,7 +128,22 @@ export const MODEL_UPGRADES: Record<string, string> = {
   'anthropic/claude-sonnet-4-5': 'anthropic/claude-sonnet-5-5',
   'anthropic/claude-opus-4-1': 'anthropic/claude-opus-5-5',
   'anthropic/claude-haiku-4-5': 'anthropic/claude-haiku-5-5',
+  'google/gemini-3-pro': 'google/gemini-pro-latest',
+  'google/gemini-2.5-flash': 'google/gemini-flash-latest',
 };
+
+/**
+ * Modelos novos que entram em filas existentes uma única vez (antes do primeiro `before`
+ * encontrado, ou no fim). Se o usuário tirar depois, não volta.
+ */
+export const CHAIN_ADDITIONS: { id: string; profile: string; model: string; before: string[] }[] = [
+  // Flash Lite antes do Flash: responde rápido e o Flash vive sobrecarregado no plano grátis.
+  { id: 'code-gemini-flash-lite', profile: 'code', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
+  { id: 'bug-gemini-flash-lite', profile: 'bug', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
+  { id: 'terse-gemini-flash-lite', profile: 'terse', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest'] },
+  { id: 'code-gemini-flash', profile: 'code', model: 'google/gemini-flash-latest', before: ['ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
+  { id: 'bug-gemini-flash', profile: 'bug', model: 'google/gemini-flash-latest', before: ['ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
+];
 
 export const PROFILES = [
   {
@@ -139,6 +156,8 @@ export const PROFILES = [
       'openai/gpt-5.1-codex',
       'qwen/qwen3-coder-plus',
       'deepseek/deepseek-chat',
+      'google/gemini-flash-lite-latest',
+      'google/gemini-flash-latest',
       'ollama/qwen3.8:27b',
       'ollama/qwen3:8b',
     ],
@@ -150,7 +169,7 @@ export const PROFILES = [
     systemPrompt: `${BASE_SYSTEM} Modo: arquitetura e produto. Sempre explicite trade-offs, riscos e o menor próximo passo executável.`,
     chain: [
       'anthropic/claude-opus-5-5',
-      'google/gemini-3-pro',
+      'google/gemini-pro-latest',
       'openai/gpt-5.1',
       'moonshot/kimi-k2',
       'ollama/qwen3.8:27b',
@@ -164,7 +183,7 @@ export const PROFILES = [
     systemPrompt: `${BASE_SYSTEM} Modo: documentação. Escreva em Markdown limpo, com títulos curtos, exemplos e nada de redundância.`,
     chain: [
       'anthropic/claude-sonnet-5-5',
-      'google/gemini-3-pro',
+      'google/gemini-pro-latest',
       'openai/gpt-5.1-mini',
       'zhipu/glm-4.6',
       'ollama/qwen3.8:27b',
@@ -195,6 +214,8 @@ export const PROFILES = [
       'anthropic/claude-haiku-5-5',
       'openai/gpt-5.1-mini',
       'qwen/qwen3-coder-plus',
+      'google/gemini-flash-lite-latest',
+      'google/gemini-flash-latest',
       'ollama/qwen3:8b',
     ],
   },
@@ -207,7 +228,8 @@ export const PROFILES = [
       'openai/gpt-6-luna',
       'anthropic/claude-haiku-5-5',
       'deepseek/deepseek-chat',
-      'google/gemini-2.5-flash',
+      'google/gemini-flash-lite-latest',
+      'google/gemini-flash-latest',
       'openai/gpt-5.1-mini',
       'ollama/qwen3:8b',
     ],

@@ -57,5 +57,6 @@ export function fmtTokens(n = 0) {
 
 export function fmtCost(n = 0) {
   if (!n) return '$0';
+  if (n < 0.0001) return '<$0.0001';
   return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
 }

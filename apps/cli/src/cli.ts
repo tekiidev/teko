@@ -29,7 +29,8 @@ ${c.accent('Opções')}
   -v, --version
 
 ${c.accent('Na conversa')}
-  /modelo <id|auto>   ${c.dim('/model /models /switch')}     troca ou lista modelos
+  /modelo             ${c.dim('/model /models /switch')}     lista e escolhe pelo número
+  /modelo <id|auto>                              troca direto (aceita nome curto)
   /perfil <id>        ${c.dim('/profile')}                   troca a fila (code, docs, terse...)
   /projeto <slug>     ${c.dim('/project')}                   usa um projeto (nenhum = sem projeto)
   /nova               ${c.dim('/new /clear')}                conversa nova
@@ -134,14 +135,33 @@ function printUsage() {
   console.log(['', row('hoje', u.today), row('semana', u.week), row('mês', u.month), row('total', u.total), ''].join('\n'));
 }
 
-function printModels(state: State) {
+/** Todos os modelos (não só a fila do perfil), prontos primeiro, numerados pra escolher. */
+function modelChoices(state: State, all = false) {
+  const queue = new Set(planRoute({ profileId: state.profileId }).map((m) => m.modelId));
+  const rows = listModels()
+    .filter((m) => m.enabled)
+    .map((m) => ({ ...planRoute({ profileId: state.profileId, modelId: m.id })[0], inQueue: queue.has(m.id) }));
+  const ready = rows.filter((m) => m.status === 'ready');
+  const rest = rows.filter((m) => m.status !== 'ready');
+  return { list: all ? [...ready, ...rest] : ready, hidden: all ? 0 : rest.length };
+}
+
+function printModels(state: State, all = false) {
+  const { list, hidden } = modelChoices(state, all);
+  const width = String(list.length).length;
   console.log('');
-  for (const m of planRoute({ profileId: state.profileId, modelId: state.modelId })) {
+  console.log(`  ${state.modelId ? '  ' : c.accent('▸ ')}${c.dim('0'.padStart(width))}  ${c.white('auto')} ${c.dim(`(fila do perfil ${state.profileId})`)}`);
+  list.forEach((m, i) => {
+    const current = m.modelId === state.modelId;
     const mark = m.status === 'ready' ? c.green('●') : c.dim('○');
     const why = m.status === 'ready' ? '' : c.dim(` ${m.reason || ''}`);
-    console.log(`  ${mark} ${c.white(m.label)} ${c.dim(m.modelId)}${why}`);
-  }
+    const queue = m.inQueue ? c.dim(' · na fila') : '';
+    console.log(`  ${current ? c.accent('▸ ') : '  '}${c.dim(String(i + 1).padStart(width))}  ${mark} ${current ? c.accent(m.label) : c.white(m.label)} ${c.dim(m.modelId)}${queue}${why}`);
+  });
+  if (!list.length) console.log(c.amber('  nenhum modelo pronto: coloque uma chave no .env ou na aba Conexões do painel'));
+  if (hidden) console.log(c.dim(`\n  ${hidden} sem chave ou desativados escondidos · /models todos mostra tudo`));
   console.log('');
+  return list;
 }
 
 function printSkills() {
@@ -291,7 +311,6 @@ async function chat(state: State) {
       if (cmd === 'nova') { state.sessionId = null; console.log(c.dim('  conversa nova\n')); continue; }
       if (cmd === 'uso') { printUsage(); continue; }
       if (cmd === 'skills') { printSkills(); continue; }
-      if (cmd === 'modelos') { printModels(state); continue; }
       if (cmd === 'semcache') {
         state.noCache = !state.noCache;
         console.log(c.dim(`  cache local ${state.noCache ? 'desligado' : 'ligado'}\n`));
@@ -304,8 +323,18 @@ async function chat(state: State) {
         console.log(`  ${routeLine(state)}\n`);
         continue;
       }
-      if (cmd === 'modelo') {
-        if (!arg) { printModels(state); continue; }
+      if (cmd === 'modelo' || cmd === 'modelos') {
+        // Sem argumento: lista numerada e escolhe pelo número.
+        if (!arg || arg === 'todos' || arg === 'all') {
+          const list = printModels(state, Boolean(arg));
+          const answer = (await rl.question(c.accent('  número (Enter mantém): '))).trim();
+          if (!answer) { console.log(''); continue; }
+          const n = Number(answer);
+          if (!Number.isInteger(n) || n < 0 || n > list.length) { console.log(c.red('  número inválido\n')); continue; }
+          state.modelId = n === 0 ? null : list[n - 1].modelId;
+          console.log(`  ${routeLine(state)}\n`);
+          continue;
+        }
         // Aceita o id completo ou só o final (ex: gemini-2.5-flash).
         const found = arg === 'auto' ? null : listModels().find((m) => m.id === arg || m.id.endsWith(`/${arg}`) || m.model === arg);
         if (arg !== 'auto' && !found) {

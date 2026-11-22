@@ -4,7 +4,7 @@ import { toGoogle, toolSchemas } from './format.js';
 export async function google({ model, system, messages, maxTokens, apiKey, baseUrl, signal, onDelta, tools }) {
   const url =
     `${baseUrl.replace(/\/$/, '')}/v1beta/models/${encodeURIComponent(model)}` +
-    `:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+    `:streamGenerateContent?alt=sse`;
 
   const body: Record<string, any> = {
     contents: toGoogle(messages, system),
@@ -15,7 +15,8 @@ export async function google({ model, system, messages, maxTokens, apiKey, baseU
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    // Chave no header, não na URL: URLs vão parar em logs e mensagens de erro.
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
     signal,
   });
