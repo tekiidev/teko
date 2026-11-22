@@ -1,9 +1,10 @@
-"""Servidor local de voz clonada do Teko (Chatterbox, licença MIT).
+"""Servidor local de voz clonada do Teko.
 
-Carrega o modelo uma vez e fala com a voz da gravação de referência.
-Escuta só em 127.0.0.1 (nada de fora do Mac acessa).
+Chatterbox multilíngue (licença MIT) rodando em MLX, nativo do chip da Apple:
+no MacBook M5 cada frase sai em poucos segundos (no PyTorch levava de 15 a 60 s).
+Fala com a voz da gravação de referência e escuta só em 127.0.0.1.
 
-Uso: data/voice-env/bin/python packages/ai/voice/tts_server.py <referencia.wav> [porta]
+Uso: data/voice-mlx/bin/python packages/ai/voice/tts_server.py <referencia.wav> [porta]
 """
 
 import io
@@ -12,28 +13,19 @@ import os
 import re
 import sys
 import threading
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import torch
-import torchaudio as ta
+import numpy as np
 
 REFERENCIA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else ""
 PORTA = int(sys.argv[2]) if len(sys.argv) > 2 else 4781
+MODELO = os.environ.get("TEKO_TTS_MODEL", "mlx-community/chatterbox-multilingual-v3")
 MAX_CHARS = 600
 
 if not REFERENCIA or not os.path.exists(REFERENCIA):
     sys.exit(f"gravação de referência não encontrada: {REFERENCIA or '(vazio)'}")
 
-device = os.environ.get("TEKO_TTS_DEVICE") or ("mps" if torch.backends.mps.is_available() else "cpu")
-print(f"[voz] carregando modelo em {device}...", flush=True)
-
-
-from chatterbox.mtl_tts import ChatterboxMultilingualTTS  # noqa: E402
-
-# Passar o nome ("mps"/"cpu"), não torch.device: é assim que ele decide carregar os pesos
-# (salvos numa GPU NVIDIA) primeiro na CPU.
-modelo = ChatterboxMultilingualTTS.from_pretrained(device=device)
-trava = threading.Lock()  # um áudio por vez (o modelo não é thread-safe)
 
 def _num(nome, padrao, minimo, maximo):
     try:
@@ -42,48 +34,50 @@ def _num(nome, padrao, minimo, maximo):
         return padrao
 
 
-# Ajustes de semelhança (env ou padrão escolhido no teste com a referência do Teki):
-# - exaggeration: expressividade (0.25 a 1)
-# - cfg_weight: mais baixo = segue mais o ritmo e o jeito da referência
-# - temperature: mais baixo = mais estável e parecido, menos variação
-# Velocidade 1: processa a gravação de referência uma vez só (antes era a cada frase).
-modelo.prepare_conditionals(REFERENCIA, exaggeration=_num("TEKO_TTS_EXAGGERATION", 0.5, 0.25, 1.0))
-
-# Velocidade 2: o Chatterbox gera até 1000 tokens de áudio por frase e só depois corta.
-# Limita pelo tamanho do texto (~25 tokens por segundo de fala, ~14 letras por segundo, com folga).
-_inferir = modelo.t3.inference
-_texto_atual = {"n": 0}
-
-
-def _inferir_limitado(*args, **kwargs):
-    kwargs["max_new_tokens"] = min(1000, int(_texto_atual["n"] * 2.6) + 60)
-    return _inferir(*args, **kwargs)
-
-
-modelo.t3.inference = _inferir_limitado
-
-# Aquece o modelo, pra primeira resposta não demorar a mais.
-with trava:
-    _texto_atual["n"] = 3
-    modelo.generate("Oi.", language_id="pt")
-print(f"[voz] pronto em http://127.0.0.1:{PORTA}", flush=True)
-
-
+# Padrões = os da amostra escolhida pelo Teki ("voz A"). Dá pra ajustar por variável de ambiente.
+EXAGGERATION = _num("TEKO_TTS_EXAGGERATION", 0.1, 0.0, 1.0)
 AJUSTES = {
-    "cfg_weight": _num("TEKO_TTS_CFG", 0.3, 0.0, 1.0),
-    "temperature": _num("TEKO_TTS_TEMPERATURE", 0.7, 0.3, 1.2),
+    "cfg_weight": _num("TEKO_TTS_CFG", 0.5, 0.0, 1.0),
+    "temperature": _num("TEKO_TTS_TEMPERATURE", 0.8, 0.3, 1.2),
 }
+
+print(f"[voz] carregando {MODELO} (na primeira vez baixa o modelo)...", flush=True)
+from mlx_audio.tts.utils import load_model  # noqa: E402
+from mlx_audio.utils import load_audio  # noqa: E402
+
+modelo = load_model(MODELO)
+SR = modelo.sample_rate
+
+# A gravação de referência é processada uma vez só, aqui na subida.
+conds = modelo.prepare_conditionals(load_audio(REFERENCIA, sample_rate=SR), SR, EXAGGERATION)
+trava = threading.Lock()  # um áudio por vez
 
 
 def gerar(texto: str) -> bytes:
     texto = re.sub(r"\s+", " ", texto).strip()[:MAX_CHARS]
+    # Limite de tokens de áudio pelo tamanho do texto, pra não gerar além do necessário.
+    limite = min(1000, int(len(texto) * 2.6) + 60)
     with trava:
-        _texto_atual["n"] = len(texto)
-        # Sem audio_prompt_path: usa a referência já processada na subida.
-        wav = modelo.generate(texto, language_id="pt", **AJUSTES)
+        partes = [
+            np.array(r.audio)
+            for r in modelo.generate(
+                texto, conds=conds, lang_code="pt", max_new_tokens=limite, verbose=False, **AJUSTES
+            )
+        ]
+    audio = np.concatenate(partes) if partes else np.zeros(1, dtype=np.float32)
+    pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
     buf = io.BytesIO()
-    ta.save(buf, wav.cpu(), modelo.sr, format="wav")
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(pcm)
     return buf.getvalue()
+
+
+# Aquece, pra primeira resposta não demorar a mais.
+gerar("Oi.")
+print(f"[voz] pronto em http://127.0.0.1:{PORTA}", flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -99,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self.responder(200, json.dumps({"ok": True, "device": device}).encode())
+            return self.responder(200, json.dumps({"ok": True, "engine": "mlx", "model": MODELO}).encode())
         self.responder(404, b'{"error":"nao encontrado"}')
 
     def do_POST(self):
