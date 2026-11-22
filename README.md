@@ -85,12 +85,30 @@ npm start                       # o servidor do Teko precisa estar rodando
 npm run voz                     # abre o app (ícone na barra de menu)
 ```
 
-- Transcrição local com whisper.cpp; voz do macOS (`say`, padrão Luciana)
+- Transcrição local com whisper.cpp
+- Voz: a sua, clonada localmente (abaixo); sem ela, cai na voz masculina do macOS (`say`, Reed)
 - Escuta do "Teko" liga/desliga no menu da barra ("Ativar falando \"Teko\""); desligada, o microfone só abre enquanto você segura o atalho
 - Com a escuta ligada o microfone fica aberto (o macOS mostra o ponto laranja). O áudio é processado no próprio Mac: um detector de volume recorta trechos curtos e o whisper local confere se começam com "Teko". Depois da ativação, só o texto transcrito da pergunta vai pro modelo de IA da fila (Gemini, Claude etc.)
 - Só vale como primeira palavra ("ei/oi Teko" também); enquanto o Teko fala, ele não se escuta
 - Respostas pelo perfil **Voz**: curtas e faladas, sem markdown
 - Na primeira vez, o macOS pede permissão de microfone
+
+### Voz clonada (local)
+
+O Teko pode falar com a sua voz e o seu sotaque, usando o [Chatterbox](https://github.com/resemble-ai/chatterbox) (licença MIT) no próprio Mac, a partir de uns 30 segundos de gravação.
+
+```bash
+python3.11 -m venv data/voice-env && data/voice-env/bin/pip install chatterbox-tts "setuptools<81"   # uma vez (~3 GB)
+npm run voz:referencia                          # mostra o texto sugerido pra gravar
+npm run voz:referencia -- ~/Downloads/voz.m4a   # converte a gravação
+npm run voz:clone                               # deixe rodando junto com o npm start
+```
+
+- A gravação fica em `data/voice` (fora do git) e o servidor de voz escuta só em `127.0.0.1`
+- Grave só a sua voz, ou a de alguém que autorizou por escrito
+- O Chatterbox marca o áudio gerado com uma marca d'água inaudível (Perth), que identifica que é voz sintética
+- Velocidade: num MacBook M5 com 16 GB, no primeiro teste (com uma referência sintética), cada frase curta levou ~35 s na GPU, lento demais pra conversa. O app fala frase por frase pra começar antes, mas por enquanto a voz clonada serve mais pra testar do que pro dia a dia
+- `TEKO_TTS_DEVICE=cpu` força a CPU (no teste foi mais lenta que a GPU)
 
 ## Cofu
 

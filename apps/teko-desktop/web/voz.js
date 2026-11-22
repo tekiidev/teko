@@ -342,28 +342,57 @@ async function perguntar(texto, meu) {
   return resposta;
 }
 
-async function falar(texto, meu) {
+/** Quebra em frases (juntando as muito curtas) pra começar a falar antes de gerar tudo. */
+function frases(texto) {
+  const partes = texto.match(/[^.!?…]+[.!?…]+["')\]]*|[^.!?…]+$/g) || [texto];
+  const out = [];
+  for (const p of partes.map((x) => x.trim()).filter(Boolean)) {
+    if (out.length && (out[out.length - 1].length < 25 || p.length < 15) && out[out.length - 1].length + p.length < 220) {
+      out[out.length - 1] += ` ${p}`;
+    } else out.push(p);
+  }
+  return out;
+}
+
+async function gerarFala(trecho) {
   const res = await fetch(`${API}/voice/speak`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: texto }),
+    body: JSON.stringify({ text: trecho }),
   });
-  if (!res.ok || meu !== ciclo) return;
+  if (!res.ok) return null;
+  return audio().decodeAudioData(await res.arrayBuffer());
+}
+
+function tocar(som) {
   const c = audio();
-  const som = await c.decodeAudioData(await res.arrayBuffer());
-  if (meu !== ciclo) return;
   const fonte = c.createBufferSource();
   fonte.buffer = som;
   fonte.connect(falaAnalisador);
   falaAnalisador.connect(c.destination);
   tocando = fonte;
   ativo = falaAnalisador;
-  aura.estado = 'falando';
-  await new Promise((resolve) => {
+  return new Promise((resolve) => {
     fonte.onended = resolve;
     fonte.start();
   });
-  if (tocando === fonte) pararFala();
+}
+
+/** Fala frase por frase: enquanto toca uma, já gera a próxima. */
+async function falar(texto, meu) {
+  const lista = frases(texto);
+  let proxima = gerarFala(lista[0]);
+  for (let i = 0; i < lista.length; i += 1) {
+    const som = await proxima;
+    if (meu !== ciclo) return;
+    proxima = i + 1 < lista.length ? gerarFala(lista[i + 1]) : null;
+    if (!som) continue;
+    aura.estado = 'falando';
+    const fonte = tocar(som);
+    await fonte;
+    if (meu !== ciclo) return;
+  }
+  pararFala();
 }
 
 function pararFala() {

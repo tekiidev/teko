@@ -16,6 +16,10 @@ import { getSetting } from './db.js';
 const run = promisify(execFile);
 
 export const MODELS_DIR = path.join(DATA_DIR, 'models');
+// Voz clonada: gravação de referência e ambiente Python ficam em data/ (fora do git).
+export const VOICE_DIR = path.join(DATA_DIR, 'voice');
+export const REFERENCE_WAV = path.join(VOICE_DIR, 'referencia.wav');
+export const VOICE_ENV_PYTHON = path.join(DATA_DIR, 'voice-env', 'bin', 'python');
 export const DEFAULT_MODEL = 'ggml-small.bin';
 // Modelo menor e mais rápido só pra conferir a palavra de ativação.
 export const WAKE_MODEL = 'ggml-base.bin';
@@ -31,7 +35,11 @@ export function voiceSettings() {
     model: process.env.WHISPER_MODEL || cfg.model || path.join(MODELS_DIR, DEFAULT_MODEL),
     wakeModel: process.env.WHISPER_WAKE_MODEL || cfg.wakeModel || path.join(MODELS_DIR, WAKE_MODEL),
     language: cfg.language || 'pt',
-    voice: process.env.TEKO_VOICE || cfg.voice || 'Luciana',
+    // say do macOS: reserva quando a voz clonada não está no ar (masculina).
+    voice: process.env.TEKO_VOICE || cfg.voice || 'Reed',
+    // auto = voz clonada se o servidor dela estiver rodando, senão say.
+    engine: process.env.TEKO_VOICE_ENGINE || cfg.engine || 'auto',
+    ttsUrl: process.env.TEKO_TTS_URL || cfg.ttsUrl || 'http://127.0.0.1:4781',
     rate: Number(cfg.rate) > 0 ? Number(cfg.rate) : 190,
   };
 }
@@ -55,6 +63,8 @@ export async function voiceStatus() {
     wakeModel: fs.existsSync(s.wakeModel),
     say: process.platform === 'darwin' && (await has('say')),
     voice: s.voice,
+    clone: await cloneOnline(s.ttsUrl),
+    reference: fs.existsSync(REFERENCE_WAV),
   };
 }
 
@@ -129,12 +139,42 @@ export function speakable(text: string) {
     .slice(0, MAX_SPEAK_CHARS);
 }
 
-/** Gera a fala com o `say` do macOS e devolve um WAV. */
+async function cloneOnline(url) {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(400) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Voz clonada (servidor local do Chatterbox). Devolve null se não estiver no ar ou falhar. */
+async function speakClone(text: string, url: string) {
+  try {
+    const res = await fetch(`${url}/tts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+/** Gera a fala (voz clonada se estiver no ar, senão `say` do macOS) e devolve um WAV. */
 export async function speak(text: string) {
-  if (process.platform !== 'darwin') throw new Error('voz disponível só no macOS por enquanto');
   const s = voiceSettings();
   const clean = speakable(text);
   if (!clean) throw new Error('nada pra falar');
+  if (s.engine !== 'say') {
+    const wav = await speakClone(clean, s.ttsUrl);
+    if (wav) return wav;
+    if (s.engine === 'clone') throw new Error('voz clonada fora do ar: rode npm run voz:clone');
+  }
+  if (process.platform !== 'darwin') throw new Error('voz disponível só no macOS por enquanto');
   const input = tempFile('txt');
   const out = tempFile('wav');
   fs.writeFileSync(input, clean, { mode: 0o600 });
