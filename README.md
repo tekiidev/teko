@@ -71,6 +71,23 @@ Sem `npm link`: `npm run teko -- "pergunta"`.
 - Linha terminando em `\` continua na próxima; Ctrl+C interrompe a resposta
 - `NO_COLOR=1` desliga as cores
 
+## Voz no Mac
+
+Segure **⌥ Espaço**, fale, solte: o Teko transcreve no próprio Mac, responde e fala, com uma aura de pixels por cima da tela que muda quando ele ouve, pensa e fala.
+
+```bash
+brew install whisper-cpp rust   # uma vez
+npm run voice:setup             # baixa o modelo de transcrição (~470 MB, uma vez)
+npm start                       # o servidor do Teko precisa estar rodando
+npm run voz                     # abre o app (ícone na barra de menu)
+```
+
+- Transcrição local com whisper.cpp; voz do macOS (`say`, padrão Luciana)
+- O microfone só liga enquanto você segura o atalho, e a aura fica visível nesse tempo
+- Respostas pelo perfil **Voz**: curtas e faladas, sem markdown
+- Na primeira vez, o macOS pede permissão de microfone
+- "Teko" como palavra de ativação, sem atalho, é a próxima fase
+
 ## Cofu
 
 App da feira, para qualquer pessoa: fale ou escreva o que vai comprar e o Cofu monta a lista. Funciona offline (a IA só online). Fica em `apps/cofu` e é feito com o Teko.
@@ -139,6 +156,9 @@ apps/
   cli/                    @teko/cli: comando `teko` no terminal
     bin/teko.mjs          entrada (carrega o TypeScript via tsx)
     src/cli.ts            conversa, pergunta única e comandos
+  teko-desktop/           @teko/desktop: voz no Mac (Tauri) com a aura
+    web/                  aura (canvas) e fluxo de voz
+    src-tauri/            atalho global, janela transparente, barra de menu
   cofu/                   @teko/cofu: app da feira (Next.js, PWA offline)
     src/app/api/lista     rota da IA (só servidor)
     src/lib/              leitor sem IA, IndexedDB, orçamento

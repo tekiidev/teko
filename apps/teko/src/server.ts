@@ -21,6 +21,7 @@ import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko
 import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
 import { compressionSettings } from '@teko/ai/compress';
 import { runTurn } from '@teko/ai/chat';
+import { speak, transcribe, voiceStatus } from '@teko/ai/voice';
 import { deleteSkill, findImportable, getSkill, importSkills, listSkills } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
@@ -320,10 +321,64 @@ function buildCopyContext(url) {
   return { context: sections.filter(Boolean).join('\n\n').slice(0, 24000), generatedAt: nowIso() };
 }
 
+// Só o app desktop do Teko (Tauri) pode chamar a API de outra origem.
+const DESKTOP_ORIGINS = new Set(['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']);
+
+function allowDesktop(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !DESKTOP_ORIGINS.has(origin)) return false;
+  res.setHeader('access-control-allow-origin', origin);
+  res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type');
+  res.setHeader('vary', 'origin');
+  return true;
+}
+
+async function readBody(req, limit) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new Error('áudio grande demais');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function handleVoice(req, res, action, method) {
+  if (action === 'status' && method === 'GET') return json(res, 200, await voiceStatus());
+  if (action === 'transcribe' && method === 'POST') {
+    const wav = await readBody(req, 25 * 1024 * 1024);
+    if (wav.length < 1000) return json(res, 400, { error: 'áudio vazio' });
+    return json(res, 200, { text: await transcribe(wav) });
+  }
+  if (action === 'speak' && method === 'POST') {
+    const body = await readJson(req);
+    const audio = await speak(String(body.text || ''));
+    res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'no-store' });
+    return res.end(audio);
+  }
+  return json(res, 404, { error: 'rota de voz não encontrada' });
+}
+
 async function dispatch(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const method = req.method || 'GET';
+
+  const fromDesktop = allowDesktop(req, res);
+  if (method === 'OPTIONS') {
+    res.writeHead(fromDesktop ? 204 : 403);
+    return res.end();
+  }
+
+  // Proteção contra CSRF: o Teko local não tem login, então um site aberto no navegador
+  // poderia mandar POST pra cá. Escrita só vale vinda do próprio painel, do app desktop
+  // ou sem Origin (terminal, curl, MCP).
+  const origin = req.headers.origin;
+  if (origin && method !== 'GET' && !fromDesktop && origin !== `http://${req.headers.host}`) {
+    return json(res, 403, { error: 'origem não permitida' });
+  }
 
   if (!segments[0]?.startsWith('api')) {
     if (method !== 'GET') return json(res, 405, { error: 'método não permitido' });
@@ -331,6 +386,8 @@ async function dispatch(req, res) {
   }
 
   const [, resource, id, sub] = segments;
+
+  if (resource === 'voice') return handleVoice(req, res, id, method);
 
   if (resource === 'bootstrap' && method === 'GET') return json(res, 200, publicBootstrap());
   if (resource === 'usage' && method === 'GET') return json(res, 200, usageSummary());
