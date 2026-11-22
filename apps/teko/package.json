@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Painel local do Teko e servidor MCP.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
