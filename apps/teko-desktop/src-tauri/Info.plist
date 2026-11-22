@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSCameraUsageDescription</key>
+  <string>O Teko usa a câmera localmente enquanto está aberto para reconhecer o gesto T e abrir o mapa neural. Nenhum vídeo é enviado.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>O Teko usa o microfone só enquanto você segura o atalho de falar. O áudio é transcrito no próprio Mac.</string>
+  <string>O Teko usa o microfone para escutar a palavra de ativação e seus comandos de voz.</string>
 </dict>
 </plist>

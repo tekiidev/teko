@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mapa",
+  "description": "A janela do mapa (servida pelo Teko local) pode ouvir eventos do app e chamar os comandos dele, como fechar o mapa.",
+  "windows": ["context-map"],
+  "remote": { "urls": ["http://127.0.0.1:4780/*", "http://localhost:4780/*"] },
+  "permissions": ["core:event:default"]
+}

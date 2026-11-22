@@ -6,8 +6,9 @@
   "description": "Teko no Mac: segure o atalho, fale, e a aura responde.",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "prepare:vision": "node scripts/prepare-vision.mjs",
+    "dev": "npm run prepare:vision && tauri dev",
+    "build": "npm run prepare:vision && tauri build",
     "icons": "tauri icon src-tauri/icons/source.png -o src-tauri/icons"
   },
   "devDependencies": {
