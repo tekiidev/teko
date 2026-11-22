@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { APP_VERSION } from '@teko/ai/config';
-import { db, listProfiles } from '@teko/ai/db';
+import { db, listModels, listProfiles } from '@teko/ai/db';
 import { runTurn } from '@teko/ai/chat';
 import { planRoute } from '@teko/ai/router';
 import { usageSummary } from '@teko/ai/usage';
@@ -29,10 +29,32 @@ ${c.accent('Opções')}
   -v, --version
 
 ${c.accent('Na conversa')}
-  /ajuda /sair /nova /perfil <id> /modelo <id|auto> /projeto <slug|nenhum>
-  /uso /skills /semcache e qualquer skill: /vagas <texto>
+  /modelo <id|auto>   ${c.dim('/model /models /switch')}     troca ou lista modelos
+  /perfil <id>        ${c.dim('/profile')}                   troca a fila (code, docs, terse...)
+  /projeto <slug>     ${c.dim('/project')}                   usa um projeto (nenhum = sem projeto)
+  /nova               ${c.dim('/new /clear')}                conversa nova
+  /uso                ${c.dim('/usage /cost')}               tokens, custo e economia
+  /skills                                        lista as skills
+  /semcache           ${c.dim('/nocache')}                   liga/desliga o cache local
+  /ajuda              ${c.dim('/help')}                      esta ajuda
+  /sair               ${c.dim('/exit /quit /q')}             sai
+  Qualquer skill: /vagas <texto>. Tab completa os comandos, ↑ volta mensagens.
   Linha terminando em \\ continua na próxima.
 `;
+
+// Comandos em português com aliases em inglês (os mais comuns em outros CLIs).
+const ALIASES: Record<string, string> = {
+  ajuda: 'ajuda', help: 'ajuda', '?': 'ajuda',
+  sair: 'sair', exit: 'sair', quit: 'sair', q: 'sair',
+  nova: 'nova', new: 'nova', clear: 'nova', reset: 'nova',
+  uso: 'uso', usage: 'uso', cost: 'uso', custo: 'uso',
+  skills: 'skills',
+  modelos: 'modelos', models: 'modelos',
+  modelo: 'modelo', model: 'modelo', switch: 'modelo',
+  perfil: 'perfil', profile: 'perfil', perfis: 'perfil', profiles: 'perfil',
+  projeto: 'projeto', project: 'projeto', projetos: 'projeto', projects: 'projeto',
+  semcache: 'semcache', nocache: 'semcache',
+};
 
 type State = {
   sessionId: string | null;
@@ -96,10 +118,13 @@ async function readStdin() {
 }
 
 function routeLine(state: State) {
-  const ready = planRoute({ profileId: state.profileId, modelId: state.modelId }).filter((m) => m.status === 'ready');
+  const plan = planRoute({ profileId: state.profileId, modelId: state.modelId });
+  const ready = plan.filter((m) => m.status === 'ready');
   const first = ready[0]?.label || c.red('nenhum modelo pronto');
+  const fixed = state.modelId ? plan.find((m) => m.modelId === state.modelId) : null;
+  const fixedNote = fixed && fixed.status !== 'ready' ? c.amber(` (${fixed.reason}; usa o próximo da fila)`) : '';
   const project = state.projectName ? c.ice(state.projectName) : c.dim('sem projeto');
-  return `${c.dim('perfil')} ${c.accent(state.profileId)}  ${c.dim('modelo')} ${state.modelId ? c.accent(state.modelId) : first}  ${c.dim('projeto')} ${project}${state.noCache ? `  ${c.amber('sem cache')}` : ''}`;
+  return `${c.dim('perfil')} ${c.accent(state.profileId)}  ${c.dim('modelo')} ${state.modelId ? c.accent(state.modelId) + fixedNote : first}  ${c.dim('projeto')} ${project}${state.noCache ? `  ${c.amber('sem cache')}` : ''}`;
 }
 
 function printUsage() {
@@ -213,7 +238,25 @@ async function chat(state: State) {
   console.log(`  ${routeLine(state)}`);
   console.log(c.dim('  /ajuda mostra os comandos · Ctrl+C interrompe\n'));
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  // Tab completa comandos, skills e, depois do comando, modelos, perfis e projetos.
+  const completer = (line: string): [string[], string] => {
+    if (!line.startsWith('/')) return [[], line];
+    const [head, ...rest] = line.slice(1).split(' ');
+    if (!rest.length) {
+      const names = [...Object.keys(ALIASES), ...listSkills().map((s) => s.name)].map((n) => `/${n}`);
+      const hits = names.filter((n) => n.startsWith(line));
+      return [hits.length ? hits : names, line];
+    }
+    const arg = rest.join(' ');
+    const cmd = ALIASES[head];
+    let options: string[] = [];
+    if (cmd === 'modelo') options = ['auto', ...listModels().map((m) => m.id)];
+    if (cmd === 'perfil') options = listProfiles().map((p) => p.id);
+    if (cmd === 'projeto') options = ['nenhum', ...db.prepare('SELECT slug FROM projects').all().map((p) => p.slug).filter(Boolean)];
+    const hits = options.filter((o) => o.startsWith(arg));
+    return [hits.map((h) => `/${head} ${h}`), line];
+  };
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true, completer, historySize: 200 });
   let controller: AbortController | null = null;
   rl.on('SIGINT', () => {
     if (controller) controller.abort();
@@ -240,10 +283,11 @@ async function chat(state: State) {
     if (!text) continue;
 
     if (text.startsWith('/')) {
-      const [cmd, ...rest] = text.slice(1).split(/\s+/);
+      const [typed, ...rest] = text.slice(1).split(/\s+/);
+      const cmd = ALIASES[typed.toLowerCase()] || typed;
       const arg = rest.join(' ').trim();
-      if (cmd === 'sair' || cmd === 'exit' || cmd === 'q') break;
-      if (cmd === 'ajuda' || cmd === 'help') { console.log(HELP); continue; }
+      if (cmd === 'sair') break;
+      if (cmd === 'ajuda') { console.log(HELP); continue; }
       if (cmd === 'nova') { state.sessionId = null; console.log(c.dim('  conversa nova\n')); continue; }
       if (cmd === 'uso') { printUsage(); continue; }
       if (cmd === 'skills') { printSkills(); continue; }
@@ -262,7 +306,13 @@ async function chat(state: State) {
       }
       if (cmd === 'modelo') {
         if (!arg) { printModels(state); continue; }
-        state.modelId = arg === 'auto' ? null : arg;
+        // Aceita o id completo ou só o final (ex: gemini-2.5-flash).
+        const found = arg === 'auto' ? null : listModels().find((m) => m.id === arg || m.id.endsWith(`/${arg}`) || m.model === arg);
+        if (arg !== 'auto' && !found) {
+          console.log(c.red(`  modelo não encontrado: ${arg}`) + c.dim(' (Tab mostra os disponíveis)\n'));
+          continue;
+        }
+        state.modelId = found ? found.id : null;
         console.log(`  ${routeLine(state)}\n`);
         continue;
       }
@@ -311,7 +361,7 @@ async function main() {
     projectId: project?.id || null,
     projectName: project?.name || null,
     profileId: opts.profile || 'code',
-    modelId: opts.model || null,
+    modelId: opts.model ? listModels().find((m) => m.id === opts.model || m.id.endsWith(`/${opts.model}`))?.id || opts.model : null,
     noCache: Boolean(opts.noCache),
   };
   if (opts.resume) state.sessionId = lastSession(state.projectId);

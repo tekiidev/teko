@@ -66,7 +66,8 @@ Sem `npm link`: `npm run teko -- "pergunta"`.
 
 - Dentro de uma pasta cadastrada na aba Projetos, o projeto entra no contexto sozinho (e as ferramentas de arquivo ficam ativas)
 - Ferramentas que alteram algo pedem confirmação no próprio terminal
-- Na conversa: `/perfil`, `/modelo`, `/projeto`, `/nova`, `/uso`, `/skills`, `/semcache`, `/sair` e qualquer skill (`/vagas ...`)
+- Na conversa: `/modelo` (`/model`, `/models`, `/switch`), `/perfil` (`/profile`), `/projeto` (`/project`), `/nova` (`/new`, `/clear`), `/uso` (`/usage`), `/skills`, `/semcache` (`/nocache`), `/sair` (`/exit`, `/quit`) e qualquer skill (`/vagas ...`)
+- `/modelo gemini-2.5-flash` aceita o nome curto; Tab completa comandos, modelos, perfis e projetos; ↑ volta mensagens
 - Linha terminando em `\` continua na próxima; Ctrl+C interrompe a resposta
 - `NO_COLOR=1` desliga as cores
 
