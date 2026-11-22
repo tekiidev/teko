@@ -7,7 +7,7 @@ O Teko é a fonte única para preferências globais, cadastro de projetos, decis
 Requer Node.js 22.5 ou superior. Execute os comandos a partir da pasta do Teko:
 
 ```sh
-cd "/caminho/para/teko"
+cd /caminho/para/teko
 npm install
 npm run typecheck
 npm run start
@@ -16,7 +16,7 @@ npm run start
 Cadastre cada repositório na aba **Projetos**, incluindo seu caminho local. Para importar os repositórios Git de uma pasta raiz de uma vez, rode:
 
 ```sh
-cd "/caminho/para/teko"
+cd /caminho/para/teko
 npm run discover:projects -- "/caminho/para/seus-projetos"
 ```
 
@@ -29,14 +29,14 @@ Use o caminho real do Teko e do executável Node 22.5+ instalado no computador. 
 ### Claude Code
 
 ```sh
-claude mcp add --scope user teko -- /caminho/para/node /caminho/para/teko/node_modules/tsx/dist/cli.mjs /caminho/para/teko/src/mcp.ts
+claude mcp add --scope user teko -- /caminho/para/node /caminho/para/teko/node_modules/tsx/dist/cli.mjs /caminho/para/teko/apps/teko/src/mcp.ts
 claude mcp list
 ```
 
 ### Codex
 
 ```sh
-codex mcp add teko -- /caminho/para/node /caminho/para/teko/node_modules/tsx/dist/cli.mjs /caminho/para/teko/src/mcp.ts
+codex mcp add teko -- /caminho/para/node /caminho/para/teko/node_modules/tsx/dist/cli.mjs /caminho/para/teko/apps/teko/src/mcp.ts
 codex mcp list
 ```
 
@@ -45,7 +45,7 @@ Se o comando `codex` não estiver instalado, adicione manualmente a `~/.codex/co
 ```toml
 [mcp_servers.teko]
 command = "/caminho/para/node"
-args = ["/caminho/para/teko/node_modules/tsx/dist/cli.mjs", "/caminho/para/teko/src/mcp.ts"]
+args = ["/caminho/para/teko/node_modules/tsx/dist/cli.mjs", "/caminho/para/teko/apps/teko/src/mcp.ts"]
 startup_timeout_sec = 30
 ```
 
@@ -62,7 +62,7 @@ Adicione ao `mcpServers` em `~/.gemini/config/mcp_config.json` (ou ao arquivo `.
       "command": "/caminho/para/node",
       "args": [
         "/caminho/para/teko/node_modules/tsx/dist/cli.mjs",
-        "/caminho/para/teko/src/mcp.ts"
+        "/caminho/para/teko/apps/teko/src/mcp.ts"
       ]
     }
   }

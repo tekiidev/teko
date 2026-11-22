@@ -2,7 +2,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { PORT, HOST, PUBLIC_DIR, APP_VERSION } from './config.js';
+import { fileURLToPath } from 'node:url';
+import { PORT, HOST, APP_VERSION } from '@teko/ai/config';
 import {
   db,
   getSetting,
@@ -14,16 +15,18 @@ import {
   getModel,
   getProvider,
   safeJson,
-} from './db.js';
-import { usageSummary, recordUsage } from './usage.js';
-import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from './router.js';
-import { buildSystemPrompt } from './context.js';
-import { syncModels } from './sync.js';
-import * as google from './connectors/google.js';
-import * as figma from './connectors/figma.js';
-import { toolDefs } from './tools/index.js';
-import { listApprovals, resolveApproval } from './approvals.js';
-import { indexProject, indexStatus, search, searchForPrompt, ensureIndex } from './search-index.js';
+} from '@teko/ai/db';
+import { usageSummary, recordUsage } from '@teko/ai/usage';
+import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
+import { buildSystemPrompt } from '@teko/ai/context';
+import { syncModels } from '@teko/ai/sync';
+import * as google from '@teko/ai/connectors/google';
+import * as figma from '@teko/ai/connectors/figma';
+import { toolDefs } from '@teko/ai/tools/index';
+import { listApprovals, resolveApproval } from '@teko/ai/approvals';
+import { indexProject, indexStatus, search, searchForPrompt, ensureIndex } from '@teko/ai/search-index';
+
+const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

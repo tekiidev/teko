@@ -7,10 +7,11 @@ Backend TypeScript executado com `tsx`, sem etapa de build. Requer Node 22.5+ (`
 ## Rodar
 
 ```bash
-cd ~/Documents/teki-projects/teko
+git clone https://github.com/tekiidev/teko.git && cd teko
 npm install
 cp .env.example .env      # opcional: preencha as chaves que você tem
 npm start                 # npm run dev recarrega sozinho
+npm run typecheck         # checa todos os pacotes via Turborepo
 npm run index             # reindexa os projetos com caminho local
 ```
 
@@ -37,24 +38,36 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 
 ## Arquitetura
 
+Monorepo com npm workspaces + Turborepo.
+
 ```
-public/                 SPA vanilla (sem build)
-src/
-  server.ts             HTTP + SSE + rotas
-  db.ts                 schema SQLite + seed
-  catalog.ts            providers, modelos, perfis e preços iniciais
-  router.ts             fila, fallback, cooldown, orçamento e loop de ferramentas
-  context.ts            monta o system prompt do projeto
-  approvals.ts          aprovações pendentes de ferramentas
-  search-index.ts       índice FTS5 + busca BM25 + trechos pro prompt
-  tools/                fs | search | shell | catálogo de ferramentas
-  usage.ts              agregações de tokens/custo
-  sync.ts               descoberta de modelos por provider
-  providers/            anthropic | openai-compatible | google
-  mcp.ts                contexto compartilhado com agentes via MCP stdio
-  connectors/google.ts  OAuth + Drive
-  connectors/figma.ts   token + outline de arquivos
+packages/
+  ai/                     @teko/ai: o orquestrador
+    src/
+      config.ts           .env, data/ e porta (lidos da raiz do repo)
+      db.ts               schema SQLite + seed
+      catalog.ts          providers, modelos, perfis e preços iniciais
+      router.ts           fila, fallback, cooldown, orçamento e loop de ferramentas
+      context.ts          monta o system prompt do projeto
+      approvals.ts        aprovações pendentes de ferramentas
+      search-index.ts     índice FTS5 + busca BM25 + trechos pro prompt
+      tools/              fs | search | shell | catálogo de ferramentas
+      usage.ts            agregações de tokens/custo
+      sync.ts             descoberta de modelos por provider
+      providers/          anthropic | openai-compatible | google
+      connectors/         google (OAuth + Drive) | figma (token + outline)
+    scripts/              index | reset
+apps/
+  teko/                   @teko/app: painel local e servidor MCP
+    src/server.ts         HTTP + SSE + rotas
+    src/mcp.ts            contexto compartilhado com agentes via MCP stdio
+    src/discover-projects.ts
+    public/               SPA vanilla (sem build)
 ```
+
+Os apps importam o orquestrador por subcaminho, por exemplo `@teko/ai/router`.
+
+Próximos espaços previstos: `packages/career-core`, `packages/finance-core`, `apps/cofu`, `apps/teko-desktop`.
 
 ### Como o fallback decide
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { db, newId, nowIso } from '../src/db.js';
+import { db, newId, nowIso } from '@teko/ai/db';
 
 const root = path.resolve(process.argv[2] || '');
 if (!process.argv[2] || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) {

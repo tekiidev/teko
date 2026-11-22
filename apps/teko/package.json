@@ -1,0 +1,18 @@
+{
+  "name": "@teko/app",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Painel local do Teko e servidor MCP.",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "mcp": "tsx src/mcp.ts",
+    "discover:projects": "tsx src/discover-projects.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@teko/ai": "*"
+  }
+}
