@@ -25,7 +25,8 @@
     "skills:import": "npm run skills:import -w @teko/ai --",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "voice:setup": "npm run voice:setup -w @teko/ai"
+    "voice:setup": "npm run voice:setup -w @teko/ai",
+    "voz": "npm run dev -w @teko/desktop"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
