@@ -102,6 +102,7 @@ function fmtTokens(n) {
 
 function describeError(err) {
   if (!err) return 'erro desconhecido';
+  if (err.code === 'refusal') return 'recusa do modelo';
   if (err.name === 'AbortError' || /aborted|timeout/i.test(err.message || '')) return 'timeout';
   if (err.status === 401 || err.status === 403) return 'chave inválida';
   if (err.status === 429) return 'limite de uso (429)';
@@ -356,7 +357,8 @@ export async function* runChat({
         yield { type: 'aborted' };
         return;
       }
-      markFailure(model.id, outcome.error);
+      // Recusa depende do conteúdo, não da saúde do modelo: tenta o próximo sem cooldown.
+      if (outcome.error?.code !== 'refusal') markFailure(model.id, outcome.error);
       yield {
         type: 'fallback',
         from: model.id,
@@ -398,6 +400,7 @@ export async function* runChat({
       role: 'assistant',
       content: outcome.text || '',
       toolCalls: calls,
+      providerContent: outcome.providerContent,
     });
 
     for (const call of calls) {

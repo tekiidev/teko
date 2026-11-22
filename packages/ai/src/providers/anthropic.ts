@@ -1,4 +1,4 @@
-import { sseData, toProviderError } from './http.js';
+import { ProviderError, sseData, toProviderError } from './http.js';
 import { toAnthropic, toolSchemas } from './format.js';
 
 function parseArgs(text) {
@@ -11,6 +11,7 @@ function parseArgs(text) {
 }
 
 const EPHEMERAL = { type: 'ephemeral' };
+const MIN_MAX_TOKENS = 16000;
 
 /** Marca o último bloco da última mensagem como breakpoint de cache. */
 function withMessageBreakpoint(messages) {
@@ -36,7 +37,9 @@ function withMessageBreakpoint(messages) {
 export function buildAnthropicBody({ model, system, messages, maxTokens, tools }) {
   const body: Record<string, any> = {
     model,
-    max_tokens: maxTokens || 4096,
+    // Nos modelos atuais o thinking fica sempre ligado e divide o limite com a resposta.
+    // Com streaming, um teto alto não custa nada a mais: só se paga o que é gerado.
+    max_tokens: Math.max(maxTokens || 0, MIN_MAX_TOKENS),
     messages: withMessageBreakpoint(toAnthropic(messages, system)),
     stream: true,
   };
@@ -75,6 +78,9 @@ export async function anthropic({
   let outputTokens = 0;
   let cachedInputTokens = 0;
   let cacheWriteTokens = 0;
+  let stopReason = null;
+  // Todos os blocos da resposta, na ordem, pra repassar ao modelo no loop de ferramentas.
+  // Blocos de thinking precisam voltar intactos (com assinatura) ou a API recusa a continuação.
   const blocks = new Map();
 
   for await (const data of sseData(res)) {
@@ -95,23 +101,36 @@ export async function anthropic({
         break;
       }
       case 'content_block_start': {
-        const block = event.content_block;
-        if (block?.type === 'tool_use') {
-          blocks.set(event.index, { id: block.id, name: block.name, argsText: '' });
+        const block = event.content_block || {};
+        if (block.type === 'tool_use') {
+          blocks.set(event.index, { type: 'tool_use', id: block.id, name: block.name, argsText: '' });
+        } else if (block.type === 'text') {
+          blocks.set(event.index, { type: 'text', text: block.text || '' });
+        } else if (block.type === 'thinking') {
+          blocks.set(event.index, { type: 'thinking', thinking: block.thinking || '', signature: block.signature || '' });
+        } else if (block.type === 'redacted_thinking') {
+          blocks.set(event.index, { type: 'redacted_thinking', data: block.data });
         }
         break;
       }
       case 'content_block_delta': {
-        const delta = event.delta;
-        if (delta?.type === 'text_delta' && delta.text) onDelta(delta.text);
-        if (delta?.type === 'input_json_delta') {
-          const current = blocks.get(event.index);
-          if (current) current.argsText += delta.partial_json || '';
+        const delta = event.delta || {};
+        const current = blocks.get(event.index);
+        if (delta.type === 'text_delta' && delta.text) {
+          if (current?.type === 'text') current.text += delta.text;
+          onDelta(delta.text);
+        } else if (delta.type === 'input_json_delta' && current?.type === 'tool_use') {
+          current.argsText += delta.partial_json || '';
+        } else if (delta.type === 'thinking_delta' && current?.type === 'thinking') {
+          current.thinking += delta.thinking || '';
+        } else if (delta.type === 'signature_delta' && current?.type === 'thinking') {
+          current.signature += delta.signature || '';
         }
         break;
       }
       case 'message_delta':
         if (event.usage?.output_tokens != null) outputTokens = event.usage.output_tokens;
+        if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
         break;
       case 'error':
         throw new Error(event.error?.message || 'Erro do provider Anthropic');
@@ -120,13 +139,23 @@ export async function anthropic({
     }
   }
 
-  const toolCalls = [...blocks.values()]
-    .filter((block) => block.name)
-    .map((block) => ({
-      id: block.id,
-      name: block.name,
-      args: parseArgs(block.argsText),
-    }));
+  // Recusa do classificador de segurança: vira erro pro roteador tentar o próximo modelo.
+  if (stopReason === 'refusal') {
+    throw new ProviderError('O modelo recusou a solicitação (refusal)', { status: 0, code: 'refusal' });
+  }
+
+  const ordered = [...blocks.entries()].sort(([a], [b]) => a - b).map(([, block]) => block);
+  const toolCalls = ordered
+    .filter((block) => block.type === 'tool_use' && block.name)
+    .map((block) => ({ id: block.id, name: block.name, args: parseArgs(block.argsText) }));
+
+  // Conteúdo bruto no formato da API, usado só se a próxima rodada for na Anthropic.
+  const providerContent = ordered
+    .filter((block) => block.type !== 'text' || block.text)
+    .map((block) => {
+      if (block.type === 'tool_use') return { type: 'tool_use', id: block.id, name: block.name, input: parseArgs(block.argsText) };
+      return block;
+    });
 
   // A Anthropic informa input_tokens sem os tokens de cache; o Teko guarda o total.
   return {
@@ -135,5 +164,6 @@ export async function anthropic({
     cachedInputTokens,
     cacheWriteTokens,
     toolCalls,
+    providerContent: { anthropic: providerContent },
   };
 }

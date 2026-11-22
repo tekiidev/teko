@@ -46,6 +46,12 @@ export function toAnthropic(messages, system) {
     }
 
     if (message.role === 'assistant') {
+      // Resposta da própria Anthropic no loop de ferramentas: repassa os blocos como vieram
+      // (inclui thinking com assinatura, exigido pra continuar após tool_use).
+      if (message.providerContent?.anthropic?.length) {
+        out.push({ role: 'assistant', content: message.providerContent.anthropic });
+        continue;
+      }
       const content = [];
       if (message.content) content.push({ type: 'text', text: message.content });
       for (const call of message.toolCalls || []) {
