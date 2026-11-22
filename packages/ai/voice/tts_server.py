@@ -41,16 +41,28 @@ with trava:
 print(f"[voz] pronto em http://127.0.0.1:{PORTA}", flush=True)
 
 
+def _num(nome, padrao, minimo, maximo):
+    try:
+        return min(maximo, max(minimo, float(os.environ.get(nome, padrao))))
+    except ValueError:
+        return padrao
+
+
+# Ajustes de semelhança (env ou padrão escolhido no teste com a referência do Teki):
+# - exaggeration: expressividade (0.25 a 1)
+# - cfg_weight: mais baixo = segue mais o ritmo e o jeito da referência
+# - temperature: mais baixo = mais estável e parecido, menos variação
+AJUSTES = {
+    "exaggeration": _num("TEKO_TTS_EXAGGERATION", 0.5, 0.25, 1.0),
+    "cfg_weight": _num("TEKO_TTS_CFG", 0.3, 0.0, 1.0),
+    "temperature": _num("TEKO_TTS_TEMPERATURE", 0.7, 0.3, 1.2),
+}
+
+
 def gerar(texto: str) -> bytes:
     texto = re.sub(r"\s+", " ", texto).strip()[:MAX_CHARS]
     with trava:
-        wav = modelo.generate(
-            texto,
-            language_id="pt",
-            audio_prompt_path=REFERENCIA,
-            exaggeration=0.5,  # expressividade (0.25 a 1)
-            cfg_weight=0.5,  # quanto segue o ritmo da referência
-        )
+        wav = modelo.generate(texto, language_id="pt", audio_prompt_path=REFERENCIA, **AJUSTES)
     buf = io.BytesIO()
     ta.save(buf, wav.cpu(), modelo.sr, format="wav")
     return buf.getvalue()

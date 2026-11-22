@@ -109,6 +109,8 @@ npm run voz:clone                               # deixe rodando junto com o npm 
 - O Chatterbox marca o áudio gerado com uma marca d'água inaudível (Perth), que identifica que é voz sintética
 - Velocidade: num MacBook M5 com 16 GB, no primeiro teste (com uma referência sintética), cada frase curta levou ~35 s na GPU, lento demais pra conversa. O app fala frase por frase pra começar antes, mas por enquanto a voz clonada serve mais pra testar do que pro dia a dia
 - `TEKO_TTS_DEVICE=cpu` força a CPU (no teste foi mais lenta que a GPU)
+- Semelhança: o modelo usa só ~10 s da gravação, então grave falando direto, sem pausas longas e sem música; áudio comprimido (tirado de vídeo ou gravação de tela) piora o resultado
+- Ajustes: `TEKO_TTS_CFG` (padrão 0.3; mais baixo segue mais o ritmo da gravação), `TEKO_TTS_TEMPERATURE` (0.7; mais baixo varia menos) e `TEKO_TTS_EXAGGERATION` (0.5)
 
 ## Cofu
 
