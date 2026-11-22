@@ -19,6 +19,7 @@ import {
 import { usageSummary, recordUsage } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
 import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
+import { compactHistory, compressionSettings, loadSessionHistory, withSummary } from '@teko/ai/compress';
 import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
 import { deleteSkill, findImportable, getSkill, importSkills, listSkills, parseSkillCommand } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
@@ -133,6 +134,7 @@ function publicBootstrap() {
     settings: {
       router: getSetting('router', {}),
       responseCache: { ...cacheSettings(), ...cacheStats() },
+      compression: compressionSettings(),
       budgets,
       globalNotes: getSetting('globalNotes', ''),
       keyHints,
@@ -141,6 +143,16 @@ function publicBootstrap() {
     figma: figma.status(),
     route: planRoute({ profileId: 'code' }),
   };
+}
+
+/** Uma chamada simples (sem ferramentas) que devolve o texto e o uso do evento done. */
+async function summarizeOnce(system, prompt, profileId, signal) {
+  let done = null;
+  for await (const event of runChat({ profileId, system, messages: [{ role: 'user', content: prompt }], signal, noCache: true })) {
+    if (event.type === 'done') done = event;
+  }
+  if (!done) throw new Error('resumo indisponível');
+  return done;
 }
 
 async function handleChat(req, res) {
@@ -169,11 +181,8 @@ async function handleChat(req, res) {
   }
 
   const profileId = body.profileId || session.profile_id || 'code';
-  const history = db
-    .prepare('SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 30')
-    .all(session.id)
-    .reverse();
-  history.push({ role: 'user', content: text });
+  const stored = loadSessionHistory(session.id);
+  stored.messages.push({ role: 'user', content: text });
 
   db.prepare(
     'INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -219,6 +228,35 @@ async function handleChat(req, res) {
       console.error('[busca]', err.message);
     }
   }
+
+  // Conversa longa: as mensagens antigas viram resumo (modelo barato) e ficam salvas na sessão.
+  const compressCfg = compressionSettings();
+  const compacted = await compactHistory({
+    sessionId: session.id,
+    summary: stored.summary,
+    messages: stored.messages,
+    settings: compressCfg,
+    summarize: (summarySystem, prompt) => summarizeOnce(summarySystem, prompt, compressCfg.profileId, controller.signal),
+  });
+  if (compacted.compressed) {
+    const r = compacted.compressed.result;
+    recordUsage({
+      sessionId: session.id,
+      projectId: session.project_id,
+      modelId: r.modelId,
+      providerId: r.providerId,
+      inputTokens: r.usage?.inputTokens || 0,
+      outputTokens: r.usage?.outputTokens || 0,
+      cachedInputTokens: r.usage?.cachedInputTokens || 0,
+      cacheWriteTokens: r.usage?.cacheWriteTokens || 0,
+      latencyMs: r.usage?.latencyMs ?? null,
+      cost: r.cost || 0,
+      saved: r.saved || 0,
+      kind: 'compression',
+    });
+    send('compressed', { messages: compacted.compressed.messages, savedTokens: compacted.compressed.savedTokens, modelId: r.modelId });
+  }
+  const history = withSummary(compacted.summary, compacted.messages);
 
   const system = buildSystemPrompt({ projectId: session.project_id, profileId });
   // Contexto volátil entra só na última mensagem: o system fica idêntico entre mensagens
@@ -975,6 +1013,14 @@ async function dispatch(req, res) {
     if ('globalNotes' in body) setSetting('globalNotes', String(body.globalNotes || ''));
     if ('router' in body) setSetting('router', body.router || {});
     if ('budgets' in body) setSetting('budgets', body.budgets || {});
+    if ('compression' in body) {
+      const cfg = body.compression || {};
+      const out: Record<string, any> = { enabled: cfg.enabled !== false };
+      if (Number(cfg.thresholdTokens) >= 1000) out.thresholdTokens = Math.min(Number(cfg.thresholdTokens), 500000);
+      if (Number(cfg.keepRecent) >= 2) out.keepRecent = Math.min(Math.floor(Number(cfg.keepRecent)), 50);
+      if (typeof cfg.profileId === 'string' && cfg.profileId) out.profileId = cfg.profileId;
+      setSetting('compression', out);
+    }
     if ('responseCache' in body) {
       const cfg = body.responseCache || {};
       const ttlHours = Number(cfg.ttlHours);

@@ -270,7 +270,7 @@ function ensureModels() {
 }
 
 /** Adiciona colunas novas em bancos já existentes, sem perder dados. */
-function ensureColumns(table, columns) {
+export function ensureColumns(table, columns) {
   const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
   for (const [name, definition] of Object.entries(columns)) {
     if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
