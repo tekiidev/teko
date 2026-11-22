@@ -67,7 +67,7 @@ async function readJson(req) {
 function serveStatic(res, pathname) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel));
-  if (!filePath.startsWith(PUBLIC_DIR)) {
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
     res.writeHead(403);
     res.end('forbidden');
     return;

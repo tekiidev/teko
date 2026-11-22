@@ -358,7 +358,7 @@ async function updateRouteChip() {
     const plan = await api(`/api/route?profileId=${encodeURIComponent(state.chat.profileId)}${state.chat.modelId ? `&modelId=${encodeURIComponent(state.chat.modelId)}` : ''}`);
     const ready = plan.filter((p) => p.status === 'ready');
     const first = ready[0];
-    chip.className = `chip ${ready.length ? 'lime' : 'red'}`;
+    chip.className = `chip ${ready.length ? 'accent' : 'red'}`;
     chip.textContent = first ? `${ready.length} na fila · ${first.label}` : 'fila vazia';
     chip.title = plan.map((p) => `${p.order}. ${p.label} — ${p.status === 'ready' ? 'ok' : p.reason}`).join('\n');
     const hint = $('#composer-hint');
@@ -467,8 +467,8 @@ function renderMessages() {
   box.innerHTML = state.chat.messages.map((m) => {
     const isUser = m.role === 'user';
     const meta = [];
-    if (m.model) meta.push(`<span class="chip lime">${esc(m.model)}</span>`);
-    if (m.cacheHit) meta.push('<span class="chip lime">cache local</span>');
+    if (m.model) meta.push(`<span class="chip accent">${esc(m.model)}</span>`);
+    if (m.cacheHit) meta.push('<span class="chip accent">cache local</span>');
     if (m.usage) meta.push(`<span class="chip">${fmtTokens((m.usage.inputTokens || 0) + (m.usage.outputTokens || 0))} tok</span>`);
     if (m.cost) meta.push(`<span class="chip">${fmtCost(m.cost)}</span>`);
     if (m.notes?.length) meta.push(...m.notes.map((n) => `<span class="chip amber">${esc(n)}</span>`));
@@ -813,7 +813,7 @@ async function renderProjectDetail(project) {
     <div class="card" style="margin-top:14px">
       <div class="card-head">
         <h2>Busca no projeto</h2><span class="grow"></span>
-        <span class="chip ${index?.indexed ? 'lime' : ''}" id="index-chip">
+        <span class="chip ${index?.indexed ? 'accent' : ''}" id="index-chip">
           ${index?.indexed ? `${index.chunks} trechos` : 'não indexado'}
         </span>
         <button class="btn sm" id="reindex">Reindexar</button>
@@ -980,7 +980,7 @@ async function renderProjectDetail(project) {
     btn.textContent = 'Indexando…';
     try {
       const out = await api('/api/search/index', { method: 'POST', body: { projectId: project.id } });
-      $('#index-chip').className = 'chip lime';
+      $('#index-chip').className = 'chip accent';
       $('#index-chip').textContent = `${out.chunks} trechos`;
       $('#search-meta').textContent = `${out.files} arquivos · ${out.chunks} trechos · ${out.ms} ms`;
       toast('Índice atualizado', 'ok');
@@ -1246,7 +1246,7 @@ function mountModels() {
                       ? `<span class="chip red" title="${esc(m.health.lastError || '')}">${esc(m.health.reason || 'cooldown')} · ${fmtUntil(m.health.cooldownUntil)}</span>`
                       : !m.providerHasKey
                         ? '<span class="chip amber">sem chave</span>'
-                        : m.enabled ? '<span class="chip lime">pronto</span>' : '<span class="chip">off</span>'}
+                        : m.enabled ? '<span class="chip accent">pronto</span>' : '<span class="chip">off</span>'}
                   </td>
                   <td class="num">${m.health?.cooldownUntil ? `<button class="btn sm" data-reset="${esc(m.id)}">reset</button>` : ''}</td>
                 </tr>`).join('')}
@@ -1330,7 +1330,7 @@ function mountConnections() {
         <div>
           <div class="card">
             <div class="card-head"><h2>Google Drive / Docs</h2><span class="grow"></span>
-              <span class="chip ${google.connected ? 'lime' : google.configured ? 'amber' : ''}">${google.connected ? 'conectado' : google.configured ? 'configurado' : 'sem credenciais'}</span>
+              <span class="chip ${google.connected ? 'accent' : google.configured ? 'amber' : ''}">${google.connected ? 'conectado' : google.configured ? 'configurado' : 'sem credenciais'}</span>
             </div>
             <div class="card-body">
               <p class="small muted" style="margin:0 0 10px">Leitura de Docs/Sheets e importação como memória do projeto.</p>
@@ -1347,7 +1347,7 @@ function mountConnections() {
 
           <div class="card" style="margin-top:14px">
             <div class="card-head"><h2>Figma</h2><span class="grow"></span>
-              <span class="chip ${figma.connected ? 'lime' : ''}">${figma.connected ? 'conectado' : 'sem token'}</span>
+              <span class="chip ${figma.connected ? 'accent' : ''}">${figma.connected ? 'conectado' : 'sem token'}</span>
             </div>
             <div class="card-body">
               <p class="small muted" style="margin:0 0 10px">Lê páginas, frames e textos do arquivo e salva como memória do projeto.</p>

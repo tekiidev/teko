@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/teko/public/brand/teko-chrome.png" alt="Teko" width="520" />
+</p>
+
 # teko 🦾
 
 **Seu JARVIS de código aberto:** várias IAs, uma memória, zero Ultron.
@@ -241,3 +245,8 @@ Apaga o banco local. É o protocolo "Casa Limpa" do Teko: use com consciência.
 ---
 
 Teko não tem relação com a Marvel. A gente só é fã mesmo. 🦾
+
+<p align="center">
+  Feito por<br />
+  <a href="https://github.com/tekiidev"><img src="apps/teko/public/brand/tekidev-chrome.png" alt="tekidev" width="200" /></a>
+</p>
