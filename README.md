@@ -2,9 +2,9 @@
 
 **Seu JARVIS de código aberto:** várias IAs, uma memória, zero Ultron.
 
-> Sabe o Visão, que carrega o JARVIS, a Sexta-Feira, a E.D.I.T.H. e até o Idiota e o Você dentro de uma pedra na testa?
-> O Teko é isso, só que pra IA de verdade: Claude, GPT, Gemini, DeepSeek, Grok, Ollama e companhia morando no mesmo lugar, dividindo a mesma memória e passando a bola quando uma delas cai.
-> O Ultron fica do lado de fora. Nenhuma IA escreve um arquivo ou roda um comando sem você dizer "pode".
+> Sabe o Visão, que carrega o JARVIS, a Sexta-Feira, a E.D.I.T.H. e até o Idiota e o Você dentro do próprio código?
+> O Teko é isso, só que pra IA no mundo real: Claude, GPT, Gemini, DeepSeek, Grok, Ollama e companhia morando no mesmo lugar, dividindo a mesma memória e passando a bola quando uma delas cai.
+> O Ultron fica de fora. Nenhuma IA escreve um arquivo ou roda um comando sem você dizer "pode".
 
 Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekiidev)). Teki Industries.
 
