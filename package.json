@@ -24,7 +24,8 @@
     "index": "npm run index -w @teko/ai",
     "skills:import": "npm run skills:import -w @teko/ai --",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "voice:setup": "npm run voice:setup -w @teko/ai"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

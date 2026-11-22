@@ -220,6 +220,20 @@ export const PROFILES = [
     ],
   },
   {
+    id: 'voice',
+    label: 'Voz',
+    description: 'Conversa falada: respostas curtas, faladas, sem formatação.',
+    systemPrompt: `${BASE_SYSTEM} Modo: voz. A resposta vai ser lida em voz alta. Fale como numa conversa: 1 a 3 frases curtas, em português do Brasil, sem markdown, sem listas, sem emoji e sem código. Se precisar de código ou de muitos detalhes, diga em uma frase e sugira abrir o painel ou o terminal.`,
+    chain: [
+      'google/gemini-flash-lite-latest',
+      'anthropic/claude-haiku-5-5',
+      'openai/gpt-6-luna',
+      'deepseek/deepseek-chat',
+      'google/gemini-flash-latest',
+      'ollama/qwen3:8b',
+    ],
+  },
+  {
     id: 'terse',
     label: 'Caveman (Econômico)',
     description: 'Respostas telegráficas e diretas para economizar ~75% de tokens.',
