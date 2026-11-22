@@ -36,3 +36,6 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      # Build de produção do Cofu (Next.js): pega erro que o typecheck não pega.
+      - run: npm run build -w @teko/cofu

@@ -19,6 +19,7 @@
     "dev": "turbo run dev",
     "mcp": "npm run mcp -w @teko/app",
     "teko": "npm run start -w @teko/cli --",
+    "cofu": "npm run dev -w @teko/cofu",
     "discover:projects": "npm run discover:projects -w @teko/app --",
     "reset": "npm run reset -w @teko/ai",
     "index": "npm run index -w @teko/ai",

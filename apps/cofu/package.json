@@ -1,0 +1,30 @@
+{
+  "name": "@teko/cofu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cofu: sua feira no cofo. Lista com IA e checklist que funciona offline.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "next dev --port 4790",
+    "build": "next build",
+    "start": "next start --port 4790",
+    "typecheck": "next typegen && tsc --noEmit -p .",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "dexie": "^4.4.7",
+    "dexie-react-hooks": "^4.4.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^5.9.3"
+  }
+}
