@@ -43,24 +43,39 @@ export async function toProviderError(res) {
   });
 }
 
-/** Itera os payloads `data:` de uma resposta SSE. */
+/**
+ * Lê um stream SSE e devolve o conteúdo de cada linha `data:`.
+ * Aceita fim de linha \n ou \r\n (o Google usa \r\n) e o último bloco sem linha em branco no fim.
+ */
 export async function* sseData(res) {
   const decoder = new TextDecoder();
   let buffer = '';
+  let pendingCR = false;
+
+  function* drain(block) {
+    for (const line of block.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (data) yield data;
+    }
+  }
+
   for await (const chunk of res.body) {
-    buffer += decoder.decode(chunk, { stream: true });
+    let text = (pendingCR ? '\r' : '') + decoder.decode(chunk, { stream: true });
+    // Um \r no fim do pedaço pode ser metade de um \r\n: espera o próximo.
+    pendingCR = text.endsWith('\r');
+    if (pendingCR) text = text.slice(0, -1);
+    buffer += text.replace(/\r\n?/g, '\n');
     let idx;
     while ((idx = buffer.indexOf('\n\n')) !== -1) {
       const block = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
-      for (const line of block.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const data = trimmed.slice(5).trim();
-        if (data) yield data;
-      }
+      yield* drain(block);
     }
   }
+  buffer += decoder.decode();
+  if (buffer.trim()) yield* drain(buffer.replace(/\r\n?/g, '\n'));
 }
 
 export function normalizeMessages(messages) {
