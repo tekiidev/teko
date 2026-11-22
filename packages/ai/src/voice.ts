@@ -17,7 +17,10 @@ const run = promisify(execFile);
 
 export const MODELS_DIR = path.join(DATA_DIR, 'models');
 export const DEFAULT_MODEL = 'ggml-small.bin';
-export const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${DEFAULT_MODEL}`;
+// Modelo menor e mais rápido só pra conferir a palavra de ativação.
+export const WAKE_MODEL = 'ggml-base.bin';
+export const modelUrl = (name) => `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${name}`;
+export const MODEL_URL = modelUrl(DEFAULT_MODEL);
 const MAX_SPEAK_CHARS = 1500;
 const VOCAB = 'Teko, Teki, Cofu, Heka, tekidev, Claude, Gemini.';
 
@@ -26,6 +29,7 @@ export function voiceSettings() {
   return {
     whisperBin: process.env.WHISPER_BIN || cfg.whisperBin || 'whisper-cli',
     model: process.env.WHISPER_MODEL || cfg.model || path.join(MODELS_DIR, DEFAULT_MODEL),
+    wakeModel: process.env.WHISPER_WAKE_MODEL || cfg.wakeModel || path.join(MODELS_DIR, WAKE_MODEL),
     language: cfg.language || 'pt',
     voice: process.env.TEKO_VOICE || cfg.voice || 'Luciana',
     rate: Number(cfg.rate) > 0 ? Number(cfg.rate) : 190,
@@ -48,6 +52,7 @@ export async function voiceStatus() {
     whisper: await has(s.whisperBin),
     model: fs.existsSync(s.model),
     modelPath: s.model,
+    wakeModel: fs.existsSync(s.wakeModel),
     say: process.platform === 'darwin' && (await has('say')),
     voice: s.voice,
   };
@@ -58,14 +63,16 @@ function tempFile(ext) {
 }
 
 /** Transcreve um WAV (16 kHz mono) com o whisper.cpp local. */
-export async function transcribe(wav: Buffer) {
+export async function transcribe(wav: Buffer, { wake = false } = {}) {
   const s = voiceSettings();
-  if (!fs.existsSync(s.model)) throw new Error('modelo do whisper não encontrado: rode npm run voice:setup');
+  // Na ativação usa o modelo rápido; se ele não existir, cai no normal.
+  const model = wake && fs.existsSync(s.wakeModel) ? s.wakeModel : s.model;
+  if (!fs.existsSync(model)) throw new Error('modelo do whisper não encontrado: rode npm run voice:setup');
   const file = tempFile('wav');
   fs.writeFileSync(file, wav, { mode: 0o600 });
   try {
     // O prompt dá vocabulário ao whisper: sem ele, "Teko" vira "Teco".
-    const args = ['-m', s.model, '-l', s.language, '-nt', '-np', '--prompt', VOCAB, '-f', file];
+    const args = ['-m', model, '-l', s.language, '-nt', '-np', '--prompt', VOCAB, '-f', file];
     const { stdout } = await run(s.whisperBin, args, {
       timeout: 60_000,
       maxBuffer: 4 * 1024 * 1024,
@@ -74,6 +81,28 @@ export async function transcribe(wav: Buffer) {
   } finally {
     fs.rmSync(file, { force: true });
   }
+}
+
+// Como o whisper costuma escrever "Teko" quando ouve (teko, teku, tico, tireku...):
+// T + vogal "e/i" opcional + som de K + vogal final. "teto", "taco" e "tchau" não passam.
+const WAKE_RE = /^t(?:e|i|ie|ir|ire|er|ee|eh)?(?:k|c|ck|kk|qu)(?:o|u|e)$/;
+const LEAD_INS = new Set(['ei', 'hey', 'ey', 'oi', 'o', 'e', 'ai', 'alo']);
+
+const plain = (w: string) => w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
+
+/**
+ * Confere se a frase começa chamando o Teko ("Teko", "Ei, Teko", "Oi Teko, ...").
+ * Só vale como primeira palavra (ou depois de um "ei"/"oi"), pra não disparar no meio de conversa.
+ * Devolve o resto da frase, que pode já ser a pergunta.
+ */
+export function detectWake(text: string) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length && !plain(words[i])) i += 1; // pula pontuação solta
+  if (words[i] && LEAD_INS.has(plain(words[i]))) i += 1;
+  if (!words[i] || !WAKE_RE.test(plain(words[i]))) return { wake: false, rest: '' };
+  const rest = words.slice(i + 1).join(' ').replace(/^[,.!?:;\s]+/, '').trim();
+  return { wake: true, rest };
 }
 
 /** Tira marcações que o whisper põe quando não ouve fala ([BLANK_AUDIO], (música) etc.). */

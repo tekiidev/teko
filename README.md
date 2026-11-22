@@ -73,20 +73,24 @@ Sem `npm link`: `npm run teko -- "pergunta"`.
 
 ## Voz no Mac
 
-Segure **⌥ Espaço**, fale, solte: o Teko transcreve no próprio Mac, responde e fala, com uma aura de pixels por cima da tela que muda quando ele ouve, pensa e fala.
+Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, responde e fala, com uma aura de pixels por cima da tela que muda quando ele ouve, pensa e fala.
+
+- "Teko, qual a capital do Maranhão?" numa frase só já vai direto
+- "Teko" sozinho: um bipe, e ele espera você falar (termina quando você para)
 
 ```bash
 brew install whisper-cpp rust   # uma vez
-npm run voice:setup             # baixa o modelo de transcrição (~470 MB, uma vez)
+npm run voice:setup             # baixa os modelos de transcrição (~615 MB, uma vez)
 npm start                       # o servidor do Teko precisa estar rodando
 npm run voz                     # abre o app (ícone na barra de menu)
 ```
 
 - Transcrição local com whisper.cpp; voz do macOS (`say`, padrão Luciana)
-- O microfone só liga enquanto você segura o atalho, e a aura fica visível nesse tempo
+- Escuta do "Teko" liga/desliga no menu da barra ("Ativar falando \"Teko\""); desligada, o microfone só abre enquanto você segura o atalho
+- Com a escuta ligada o microfone fica aberto (o macOS mostra o ponto laranja). O áudio é processado no próprio Mac: um detector de volume recorta trechos curtos e o whisper local confere se começam com "Teko". Depois da ativação, só o texto transcrito da pergunta vai pro modelo de IA da fila (Gemini, Claude etc.)
+- Só vale como primeira palavra ("ei/oi Teko" também); enquanto o Teko fala, ele não se escuta
 - Respostas pelo perfil **Voz**: curtas e faladas, sem markdown
 - Na primeira vez, o macOS pede permissão de microfone
-- "Teko" como palavra de ativação, sem atalho, é a próxima fase
 
 ## Cofu
 

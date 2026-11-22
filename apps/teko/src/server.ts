@@ -21,7 +21,7 @@ import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko
 import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
 import { compressionSettings } from '@teko/ai/compress';
 import { runTurn } from '@teko/ai/chat';
-import { speak, transcribe, voiceStatus } from '@teko/ai/voice';
+import { detectWake, speak, transcribe, voiceStatus } from '@teko/ai/voice';
 import { deleteSkill, findImportable, getSkill, importSkills, listSkills } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
@@ -351,6 +351,13 @@ async function handleVoice(req, res, action, method) {
     const wav = await readBody(req, 25 * 1024 * 1024);
     if (wav.length < 1000) return json(res, 400, { error: 'áudio vazio' });
     return json(res, 200, { text: await transcribe(wav) });
+  }
+  if (action === 'wake' && method === 'POST') {
+    // Trecho curto de fala: confere se começa com "Teko" (modelo rápido, tudo local).
+    const wav = await readBody(req, 4 * 1024 * 1024);
+    if (wav.length < 1000) return json(res, 200, { wake: false, rest: '', text: '' });
+    const text = await transcribe(wav, { wake: true });
+    return json(res, 200, { ...detectWake(text), text });
   }
   if (action === 'speak' && method === 'POST') {
     const body = await readJson(req);
