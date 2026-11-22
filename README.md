@@ -41,11 +41,35 @@ npm start                 # npm run dev recarrega sozinho
 npm run typecheck         # checa todos os pacotes via Turborepo
 npm test                  # testes (node:test)
 npm run index             # reindexa os projetos com caminho local
+npm run teko -- "oi"      # Teko no terminal (veja abaixo)
 ```
 
 Abre `http://127.0.0.1:4780`.
 
 As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLite local (`data/teko.db`, com permissão do seu usuário).
+
+## Terminal
+
+O mesmo Teko (modelos, memória, chaves, cache e skills) direto no terminal:
+
+```bash
+cd apps/cli && npm link   # uma vez: instala o comando `teko`
+teko                      # abre a conversa
+teko "como reverto o último commit sem perder as mudanças?"
+cat erro.log | teko "explica esse erro"
+teko -c                   # continua a última conversa
+teko uso                  # tokens, custo e economia
+teko modelos              # fila do perfil e o que está pronto
+```
+
+Sem `npm link`: `npm run teko -- "pergunta"`.
+
+- Dentro de uma pasta cadastrada na aba Projetos, o projeto entra no contexto sozinho (e as ferramentas de arquivo ficam ativas)
+- Ferramentas que alteram algo pedem confirmação no próprio terminal
+- Na conversa: `/modelo` (`/model`, `/models`, `/switch`), `/perfil` (`/profile`), `/projeto` (`/project`), `/nova` (`/new`, `/clear`), `/uso` (`/usage`), `/skills`, `/semcache` (`/nocache`), `/sair` (`/exit`, `/quit`) e qualquer skill (`/vagas ...`)
+- `/modelo gemini-2.5-flash` aceita o nome curto; Tab completa comandos, modelos, perfis e projetos; ↑ volta mensagens
+- Linha terminando em `\` continua na próxima; Ctrl+C interrompe a resposta
+- `NO_COLOR=1` desliga as cores
 
 ## O que já funciona
 
@@ -77,6 +101,7 @@ packages/
     src/
       config.ts           .env, data/ e porta (lidos da raiz do repo)
       db.ts               schema SQLite + seed
+      chat.ts             um turno completo de chat (usado pelo painel e pelo terminal)
       catalog.ts          providers, modelos, perfis e preços iniciais
       router.ts           fila, fallback, cooldown, orçamento e loop de ferramentas
       context.ts          monta o system prompt do projeto
@@ -94,6 +119,9 @@ apps/
     src/mcp.ts            contexto compartilhado com agentes via MCP stdio
     src/discover-projects.ts
     public/               SPA vanilla (sem build)
+  cli/                    @teko/cli: comando `teko` no terminal
+    bin/teko.mjs          entrada (carrega o TypeScript via tsx)
+    src/cli.ts            conversa, pergunta única e comandos
 ```
 
 Os apps importam o orquestrador por subcaminho, por exemplo `@teko/ai/router`.

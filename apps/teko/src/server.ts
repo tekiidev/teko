@@ -16,18 +16,17 @@ import {
   getProvider,
   safeJson,
 } from '@teko/ai/db';
-import { usageSummary, recordUsage } from '@teko/ai/usage';
+import { usageSummary } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
 import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
-import { compactHistory, compressionSettings, loadSessionHistory, withSummary } from '@teko/ai/compress';
-import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
-import { deleteSkill, findImportable, getSkill, importSkills, listSkills, parseSkillCommand } from '@teko/ai/skills';
+import { compressionSettings } from '@teko/ai/compress';
+import { runTurn } from '@teko/ai/chat';
+import { deleteSkill, findImportable, getSkill, importSkills, listSkills } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
 import * as figma from '@teko/ai/connectors/figma';
-import { toolDefs } from '@teko/ai/tools/index';
 import { listApprovals, resolveApproval } from '@teko/ai/approvals';
-import { indexProject, indexStatus, search, searchForPrompt, ensureIndex } from '@teko/ai/search-index';
+import { indexProject, indexStatus, search } from '@teko/ai/search-index';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 
@@ -145,54 +144,10 @@ function publicBootstrap() {
   };
 }
 
-/** Uma chamada simples (sem ferramentas) que devolve o texto e o uso do evento done. */
-async function summarizeOnce(system, prompt, profileId, signal) {
-  let done = null;
-  for await (const event of runChat({ profileId, system, messages: [{ role: 'user', content: prompt }], signal, noCache: true })) {
-    if (event.type === 'done') done = event;
-  }
-  if (!done) throw new Error('resumo indisponível');
-  return done;
-}
-
 async function handleChat(req, res) {
   const body = await readJson(req);
   const text = String(body.text || '').trim();
   if (!text) return json(res, 400, { error: 'mensagem vazia' });
-
-  let session = body.sessionId
-    ? db.prepare('SELECT * FROM sessions WHERE id = ?').get(body.sessionId)
-    : null;
-
-  if (!session) {
-    const id = newId('ses');
-    session = {
-      id,
-      project_id: body.projectId || null,
-      profile_id: body.profileId || 'code',
-      title: text.slice(0, 70),
-      summary: null,
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    };
-    db.prepare(
-      'INSERT INTO sessions (id, project_id, title, profile_id, summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run(session.id, session.project_id, session.title, session.profile_id, null, session.created_at, session.updated_at);
-  }
-
-  const profileId = body.profileId || session.profile_id || 'code';
-  const stored = loadSessionHistory(session.id);
-  stored.messages.push({ role: 'user', content: text });
-
-  db.prepare(
-    'INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(newId('msg'), session.id, 'user', text, nowIso());
-
-  db.prepare('UPDATE sessions SET updated_at = ?, profile_id = ? WHERE id = ?').run(
-    nowIso(),
-    profileId,
-    session.id,
-  );
 
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
@@ -201,148 +156,24 @@ async function handleChat(req, res) {
     'x-accel-buffering': 'no',
   });
 
-  const send = (type, payload = {}) => {
-    if (res.writableEnded) return;
-    res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`);
-  };
-
-  send('meta', { sessionId: session.id, projectId: session.project_id, profileId });
-
   const controller = new AbortController();
   res.on('close', () => {
     if (!res.writableEnded) controller.abort();
   });
 
-  const project = session.project_id
-    ? db.prepare('SELECT * FROM projects WHERE id = ?').get(session.project_id)
-    : null;
-  const projectPath = project?.path && fs.existsSync(project.path) ? project.path : null;
-  const tools = projectPath ? toolDefs() : null;
-
-  let retrieved = '';
-  if (project?.id) {
-    try {
-      ensureIndex(project.id);
-      retrieved = searchForPrompt(project.id, text, { limit: 4, maxChars: 3500 });
-    } catch (err) {
-      console.error('[busca]', err.message);
-    }
+  // A lógica do turno mora em @teko/ai/chat, compartilhada com o terminal.
+  for await (const event of runTurn({
+    text,
+    sessionId: body.sessionId || null,
+    projectId: body.projectId || null,
+    profileId: body.profileId || null,
+    modelId: body.modelId || null,
+    noCache: Boolean(body.noCache),
+    signal: controller.signal,
+  })) {
+    if (res.writableEnded) break;
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
   }
-
-  // Conversa longa: as mensagens antigas viram resumo (modelo barato) e ficam salvas na sessão.
-  const compressCfg = compressionSettings();
-  const compacted = await compactHistory({
-    sessionId: session.id,
-    summary: stored.summary,
-    messages: stored.messages,
-    settings: compressCfg,
-    summarize: (summarySystem, prompt) => summarizeOnce(summarySystem, prompt, compressCfg.profileId, controller.signal),
-  });
-  if (compacted.compressed) {
-    const r = compacted.compressed.result;
-    recordUsage({
-      sessionId: session.id,
-      projectId: session.project_id,
-      modelId: r.modelId,
-      providerId: r.providerId,
-      inputTokens: r.usage?.inputTokens || 0,
-      outputTokens: r.usage?.outputTokens || 0,
-      cachedInputTokens: r.usage?.cachedInputTokens || 0,
-      cacheWriteTokens: r.usage?.cacheWriteTokens || 0,
-      latencyMs: r.usage?.latencyMs ?? null,
-      cost: r.cost || 0,
-      saved: r.saved || 0,
-      kind: 'compression',
-    });
-    send('compressed', { messages: compacted.compressed.messages, savedTokens: compacted.compressed.savedTokens, modelId: r.modelId });
-  }
-  const history = withSummary(compacted.summary, compacted.messages);
-
-  const system = buildSystemPrompt({ projectId: session.project_id, profileId });
-  // Contexto volátil entra só na última mensagem: o system fica idêntico entre mensagens
-  // e o prefixo (ferramentas + system) é reaproveitado do cache do provider.
-  // `/nome` no começo ativa a skill só nesta mensagem (sem chamada extra ao modelo).
-  const command = parseSkillCommand(text);
-  const turnContext = buildTurnContext({ retrieved, skill: command?.skill || null });
-  const modelHistory = history.map((message, index) =>
-    index === history.length - 1 ? { ...message, content: withTurnContext(message.content, turnContext) } : message,
-  );
-
-  let acc = '';
-  let final = null;
-  let lastModel = null;
-
-  try {
-    for await (const event of runChat({
-      profileId,
-      modelId: body.modelId || null,
-      system,
-      messages: modelHistory,
-      signal: controller.signal,
-      tools,
-      projectPath,
-      sessionId: session.id,
-      noCache: Boolean(body.noCache),
-    })) {
-      if (event.type === 'delta') acc += event.text;
-      if (event.type === 'attempt') lastModel = event.modelId;
-      if (event.type === 'done') {
-        final = event;
-        if (typeof event.text === 'string') acc = event.text;
-      }
-      send(event.type, event);
-    }
-  } catch (err) {
-    send('error', { message: String(err.message || err) });
-  }
-
-  if (final) {
-    const cost = final.cost || 0;
-    db.prepare(
-      `INSERT INTO messages
-         (id, session_id, role, content, model_id, provider_id, input_tokens, output_tokens, cost, meta, created_at)
-       VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      newId('msg'),
-      session.id,
-      acc,
-      final.modelId,
-      final.providerId,
-      final.usage?.inputTokens || 0,
-      final.usage?.outputTokens || 0,
-      cost,
-      JSON.stringify({ label: final.label, tools: final.tools || [], cacheHit: Boolean(final.cacheHit) }),
-      nowIso(),
-    );
-
-    recordUsage({
-      sessionId: session.id,
-      projectId: session.project_id,
-      modelId: final.modelId,
-      providerId: final.providerId,
-      inputTokens: final.usage?.inputTokens || 0,
-      outputTokens: final.usage?.outputTokens || 0,
-      cachedInputTokens: final.usage?.cachedInputTokens || 0,
-      cacheWriteTokens: final.usage?.cacheWriteTokens || 0,
-      latencyMs: final.usage?.latencyMs ?? null,
-      cost,
-      saved: final.saved || 0,
-      kind: final.cacheHit ? 'cache_hit' : 'chat',
-    });
-
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(nowIso(), session.id);
-    send('end', { ok: true, usage: final.usage, cost, modelId: final.modelId, cacheHit: Boolean(final.cacheHit) });
-  } else {
-    if (acc) {
-      db.prepare(
-        `INSERT INTO messages
-           (id, session_id, role, content, model_id, provider_id, meta, created_at)
-         VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?)`,
-      ).run(newId('msg'), session.id, acc, lastModel, null, JSON.stringify({ partial: true }), nowIso());
-    }
-    send('end', { ok: false });
-  }
-
   res.end();
 }
 
