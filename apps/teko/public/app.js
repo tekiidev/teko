@@ -559,6 +559,10 @@ async function sendMessage() {
           assistant.model = ev.label;
           assistant.notes.push(`→ ${ev.label}`);
         }
+        if (ev.type === 'compressed') {
+          assistant.notes.push(`resumo: ${ev.messages} msgs antigas, ~${fmtTokens(ev.savedTokens)} tok a menos`);
+          scheduleMessages();
+        }
         if (ev.type === 'delta') {
           assistant.content += ev.text;
           scheduleMessages();

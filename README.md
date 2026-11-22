@@ -52,6 +52,7 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 - **Fallback automático** — 429, cota esgotada, chave inválida, 5xx, timeout: o modelo entra em cooldown e a fila continua.
 - **Prompt caching**: o system prompt fica estável entre mensagens (data e trechos da busca vão junto da mensagem), com breakpoints de cache na Anthropic e aproveitamento do cache automático de OpenAI, Gemini e DeepSeek. Tokens em cache, latência e economia estimada ficam registrados por chamada.
 - **Cache local de respostas**: a mesma pergunta no mesmo contexto volta do SQLite, sem nova chamada ao modelo. Vale só para conversas sem ferramentas, expira em 24 h (configurável) e o botão "Sem cache" força uma resposta nova. Cada acerto fica registrado como `cache_hit`, com o custo poupado.
+- **Compressão do histórico**: quando a parte não resumida da conversa passa de ~12 mil tokens (configurável), as mensagens antigas viram um resumo feito por um modelo barato e só as últimas vão inteiras. O resumo fica salvo na sessão e só muda na próxima compressão, então o começo da conversa continua aproveitando o cache do provider.
 - **Escolha manual + fallback** — se você escolher um modelo e ele cair, os seguintes do perfil continuam valendo.
 - **Uso** — tokens e custo por sessão, hoje, semana, mês e total; série de 14 dias; quebra por modelo e provider.
 - **Orçamento por modelo** — limite de tokens por semana/mês; ao estourar, o modelo sai da fila.
