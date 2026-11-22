@@ -247,6 +247,25 @@ export function upgradeChain(chain: string[], upgrades: Record<string, string> =
   return out;
 }
 
+/**
+ * Atualiza o prompt dos perfis quando o catálogo muda, mas só se o usuário não editou:
+ * guarda o último prompt do catálogo aplicado e compara com o que está no banco.
+ */
+function syncProfilePrompts() {
+  const applied = getSetting('profilePrompts', {}) || {};
+  const update = db.prepare('UPDATE profiles SET system_prompt = ? WHERE id = ?');
+  for (const p of PROFILES) {
+    const row = db.prepare('SELECT system_prompt FROM profiles WHERE id = ?').get(p.id);
+    if (!row) continue;
+    if (row.system_prompt !== p.systemPrompt && applied[p.id] !== undefined && row.system_prompt === applied[p.id]) {
+      update.run(p.systemPrompt, p.id);
+      row.system_prompt = p.systemPrompt;
+    }
+    if (row.system_prompt === p.systemPrompt) applied[p.id] = p.systemPrompt;
+  }
+  setSetting('profilePrompts', applied);
+}
+
 function upgradeProfileChains() {
   for (const profile of db.prepare('SELECT id, chain FROM profiles').all()) {
     const chain = safeJson(profile.chain, []);
@@ -310,6 +329,7 @@ ensureModels();
 ensureProfiles();
 upgradeProfileChains();
 applyChainAdditions();
+syncProfilePrompts();
 
 export function getModel(id) {
   const row = db.prepare('SELECT * FROM models WHERE id = ?').get(id);

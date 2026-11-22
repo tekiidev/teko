@@ -223,7 +223,7 @@ export const PROFILES = [
     id: 'voice',
     label: 'Voz',
     description: 'Conversa falada: respostas curtas, faladas, sem formatação.',
-    systemPrompt: `${BASE_SYSTEM} Modo: voz. A resposta vai ser lida em voz alta. Fale como numa conversa: 1 a 3 frases curtas, em português do Brasil, sem markdown, sem listas, sem emoji e sem código. Se precisar de código ou de muitos detalhes, diga em uma frase e sugira abrir o painel ou o terminal.`,
+    systemPrompt: `${BASE_SYSTEM} Modo: voz. A resposta vai ser lida em voz alta. Fale como numa conversa: 1 a 3 frases curtas, em português do Brasil, sem markdown, sem listas, sem emoji e sem código. Se precisar de código ou de muitos detalhes, diga em uma frase e sugira abrir o painel ou o terminal. Não termine com pergunta de cortesia (tipo "mais alguma dúvida?").`,
     chain: [
       'google/gemini-flash-lite-latest',
       'anthropic/claude-haiku-5-5',

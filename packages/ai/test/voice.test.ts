@@ -15,3 +15,20 @@ test('fala: sem markdown, código vira aviso, links viram "um link"', () => {
 test('fala: limite de tamanho', () => {
   assert.ok(speakable('a '.repeat(2000)).length <= 1500);
 });
+
+test('ativação: "Teko" no começo, com ou sem "ei/oi", e o resto vira pergunta', async () => {
+  const { detectWake } = await import('../src/voice.ts');
+  assert.deepEqual(detectWake('Teko.'), { wake: true, rest: '' });
+  assert.deepEqual(detectWake('Ei, Teko, que horas são?'), { wake: true, rest: 'que horas são?' });
+  assert.deepEqual(detectWake('Oi Teco qual a capital do Maranhão'), { wake: true, rest: 'qual a capital do Maranhão' });
+  assert.deepEqual(detectWake('Téko!'), { wake: true, rest: '' });
+  for (const w of ['Teku.', 'Tireku.', 'Tico', 'Tecko']) assert.equal(detectWake(w).wake, true, w);
+});
+
+test('ativação: no meio da frase ou palavra parecida não dispara', async () => {
+  const { detectWake } = await import('../src/voice.ts');
+  assert.equal(detectWake('eu falei com o Teko ontem').wake, false);
+  assert.equal(detectWake('o teto caiu').wake, false);
+  for (const w of ['Teto.', 'Taco', 'Tchau!', 'Tudo bem?', 'Toque aqui']) assert.equal(detectWake(w).wake, false, w);
+  assert.equal(detectWake('').wake, false);
+});

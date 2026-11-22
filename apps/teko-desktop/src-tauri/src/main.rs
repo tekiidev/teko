@@ -4,7 +4,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -36,18 +36,24 @@ fn main() {
                 let _ = aura.set_ignore_cursor_events(true);
             }
 
+            // Escuta do "Teko": ligada ao abrir; desmarcar desliga o microfone.
+            let escuta = CheckMenuItem::with_id(app, "escuta", "Ativar falando \"Teko\"", true, true, None::<&str>)?;
+            let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let dica = MenuItem::with_id(app, "dica", "Segure ⌥ Espaço pra falar", false, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &dica, &sair])?;
+            let escuta_menu = escuta.clone();
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(false)
                 .tooltip("Teko")
                 .menu(&menu)
-                .on_menu_event(|app, event| {
-                    if event.id.as_ref() == "sair" {
-                        app.exit(0);
+                .on_menu_event(move |app, event| match event.id.as_ref() {
+                    "sair" => app.exit(0),
+                    "escuta" => {
+                        let ligada = escuta_menu.is_checked().unwrap_or(false);
+                        let _ = app.emit("escuta", ligada);
                     }
+                    _ => {}
                 })
                 .build(app)?;
             Ok(())
