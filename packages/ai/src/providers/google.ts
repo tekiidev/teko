@@ -24,6 +24,7 @@ export async function google({ model, system, messages, maxTokens, apiKey, baseU
 
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedInputTokens = 0;
   const toolCalls = [];
 
   for await (const data of sseData(res)) {
@@ -49,8 +50,10 @@ export async function google({ model, system, messages, maxTokens, apiKey, baseU
     if (json.usageMetadata) {
       inputTokens = json.usageMetadata.promptTokenCount ?? inputTokens;
       outputTokens = json.usageMetadata.candidatesTokenCount ?? outputTokens;
+      // Cache implícito do Gemini: já incluído em promptTokenCount.
+      cachedInputTokens = json.usageMetadata.cachedContentTokenCount ?? cachedInputTokens;
     }
   }
 
-  return { inputTokens, outputTokens, toolCalls };
+  return { inputTokens, outputTokens, cachedInputTokens, cacheWriteTokens: 0, toolCalls };
 }

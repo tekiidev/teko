@@ -11,6 +11,7 @@
   "scripts": {
     "reset": "tsx scripts/reset.ts",
     "index": "tsx scripts/index.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "ORQ_DATA_DIR=$(mktemp -d) tsx --test test/*.test.ts"
   }
 }

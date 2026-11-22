@@ -10,6 +10,41 @@ function parseArgs(text) {
   }
 }
 
+const EPHEMERAL = { type: 'ephemeral' };
+
+/** Marca o último bloco da última mensagem como breakpoint de cache. */
+function withMessageBreakpoint(messages) {
+  if (!messages.length) return messages;
+  const out = messages.slice();
+  const last = { ...out[out.length - 1] };
+  const blocks = typeof last.content === 'string'
+    ? [{ type: 'text', text: last.content || ' ' }]
+    : (last.content || []).map((block) => ({ ...block }));
+  if (!blocks.length) return messages;
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: EPHEMERAL };
+  last.content = blocks;
+  out[out.length - 1] = last;
+  return out;
+}
+
+/**
+ * Monta o corpo da requisição com prompt caching:
+ * - breakpoint no system (cobre ferramentas + system, estáveis entre mensagens)
+ * - breakpoint na última mensagem (reaproveita a conversa nas rodadas de ferramentas)
+ * Prefixos abaixo do mínimo do modelo simplesmente não entram no cache, sem erro.
+ */
+export function buildAnthropicBody({ model, system, messages, maxTokens, tools }) {
+  const body: Record<string, any> = {
+    model,
+    max_tokens: maxTokens || 4096,
+    messages: withMessageBreakpoint(toAnthropic(messages, system)),
+    stream: true,
+  };
+  if (system) body.system = [{ type: 'text', text: system, cache_control: EPHEMERAL }];
+  if (tools?.length) body.tools = toolSchemas(tools).anthropic;
+  return body;
+}
+
 export async function anthropic({
   model,
   system,
@@ -21,14 +56,7 @@ export async function anthropic({
   onDelta,
   tools,
 }) {
-  const body: Record<string, any> = {
-    model,
-    max_tokens: maxTokens || 4096,
-    messages: toAnthropic(messages, system),
-    stream: true,
-  };
-  if (system) body.system = system;
-  if (tools?.length) body.tools = toolSchemas(tools).anthropic;
+  const body = buildAnthropicBody({ model, system, messages, maxTokens, tools });
 
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/messages`, {
     method: 'POST',
@@ -45,6 +73,8 @@ export async function anthropic({
 
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedInputTokens = 0;
+  let cacheWriteTokens = 0;
   const blocks = new Map();
 
   for await (const data of sseData(res)) {
@@ -56,10 +86,14 @@ export async function anthropic({
     }
 
     switch (event.type) {
-      case 'message_start':
-        inputTokens = event.message?.usage?.input_tokens ?? inputTokens;
-        outputTokens = event.message?.usage?.output_tokens ?? outputTokens;
+      case 'message_start': {
+        const usage = event.message?.usage || {};
+        inputTokens = usage.input_tokens ?? inputTokens;
+        outputTokens = usage.output_tokens ?? outputTokens;
+        cachedInputTokens = usage.cache_read_input_tokens ?? cachedInputTokens;
+        cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens;
         break;
+      }
       case 'content_block_start': {
         const block = event.content_block;
         if (block?.type === 'tool_use') {
@@ -94,5 +128,12 @@ export async function anthropic({
       args: parseArgs(block.argsText),
     }));
 
-  return { inputTokens, outputTokens, toolCalls };
+  // A Anthropic informa input_tokens sem os tokens de cache; o Teko guarda o total.
+  return {
+    inputTokens: inputTokens + cachedInputTokens + cacheWriteTokens,
+    outputTokens,
+    cachedInputTokens,
+    cacheWriteTokens,
+    toolCalls,
+  };
 }

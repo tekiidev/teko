@@ -17,7 +17,7 @@ export function windowStart(kind, now = new Date()) {
 }
 
 function emptyTotals() {
-  return { input: 0, output: 0, tokens: 0, cost: 0, requests: 0 };
+  return { input: 0, output: 0, cached: 0, tokens: 0, cost: 0, saved: 0, requests: 0 };
 }
 
 function sumUsage({ since = null, sessionId = null, modelId = null } = {}) {
@@ -38,7 +38,9 @@ function sumUsage({ since = null, sessionId = null, modelId = null } = {}) {
   const sql = `
     SELECT COALESCE(SUM(input_tokens),0) AS input,
            COALESCE(SUM(output_tokens),0) AS output,
+           COALESCE(SUM(cached_input_tokens),0) AS cached,
            COALESCE(SUM(cost),0) AS cost,
+           COALESCE(SUM(saved),0) AS saved,
            COUNT(*) AS requests
       FROM usage_events
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
@@ -47,8 +49,10 @@ function sumUsage({ since = null, sessionId = null, modelId = null } = {}) {
   return {
     input: row.input,
     output: row.output,
+    cached: row.cached,
     tokens: row.input + row.output,
     cost: row.cost,
+    saved: row.saved,
     requests: row.requests,
   };
 }
@@ -134,13 +138,18 @@ export function recordUsage({
   providerId,
   inputTokens = 0,
   outputTokens = 0,
+  cachedInputTokens = 0,
+  cacheWriteTokens = 0,
+  latencyMs = null,
   cost = 0,
+  saved = 0,
   kind = 'chat',
 }) {
   db.prepare(
     `INSERT INTO usage_events
-       (id, ts, session_id, project_id, model_id, provider_id, input_tokens, output_tokens, cost, kind)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, ts, session_id, project_id, model_id, provider_id, input_tokens, output_tokens,
+        cached_input_tokens, cache_write_tokens, latency_ms, cost, saved, kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     newId('use'),
     new Date().toISOString(),
@@ -150,7 +159,11 @@ export function recordUsage({
     providerId,
     Math.round(inputTokens),
     Math.round(outputTokens),
+    Math.round(cachedInputTokens),
+    Math.round(cacheWriteTokens),
+    latencyMs == null ? null : Math.round(latencyMs),
     cost,
+    saved,
     kind,
   );
 }

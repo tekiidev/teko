@@ -55,6 +55,7 @@ export async function openaiCompatible({
 
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedInputTokens = 0;
   let chars = 0;
   const calls = new Map();
 
@@ -67,6 +68,17 @@ export async function openaiCompatible({
       continue;
     }
     if (json.error) throw new Error(json.error.message || 'Erro do provider');
+
+    // O último chunk traz o usage com choices vazio: ler antes de pular por falta de delta.
+    if (json.usage) {
+      inputTokens = json.usage.prompt_tokens ?? inputTokens;
+      outputTokens = json.usage.completion_tokens ?? outputTokens;
+      // OpenAI: prompt_tokens_details.cached_tokens; DeepSeek: prompt_cache_hit_tokens.
+      cachedInputTokens =
+        json.usage.prompt_tokens_details?.cached_tokens ??
+        json.usage.prompt_cache_hit_tokens ??
+        cachedInputTokens;
+    }
 
     const delta = json.choices?.[0]?.delta;
     if (!delta) continue;
@@ -87,10 +99,6 @@ export async function openaiCompatible({
       }
     }
 
-    if (json.usage) {
-      inputTokens = json.usage.prompt_tokens ?? inputTokens;
-      outputTokens = json.usage.completion_tokens ?? outputTokens;
-    }
   }
 
   if (!inputTokens) {
@@ -106,5 +114,5 @@ export async function openaiCompatible({
       args: parseArgs(call.argsText),
     }));
 
-  return { inputTokens, outputTokens, toolCalls };
+  return { inputTokens, outputTokens, cachedInputTokens, cacheWriteTokens: 0, toolCalls };
 }

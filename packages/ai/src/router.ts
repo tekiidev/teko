@@ -4,6 +4,7 @@ import { env } from './config.js';
 import { tokensSince, windowStart } from './usage.js';
 import { createApproval, resolveApproval } from './approvals.js';
 import { getTool, executeTool, previewFor } from './tools/index.js';
+import { addUsage, computeCost, type Usage } from './pricing.js';
 
 export function resolveKey(provider) {
   if (!provider) return null;
@@ -286,9 +287,10 @@ export async function* runChat({
 
   let modelIndex = 0;
   let rounds = 0;
-  let totalInput = 0;
-  let totalOutput = 0;
+  let totalUsage: Usage = {};
   let totalCost = 0;
+  let totalSaved = 0;
+  let totalLatencyMs = 0;
   let fullText = '';
   let last = null;
 
@@ -336,6 +338,7 @@ export async function* runChat({
       tools: Boolean(activeTools),
     };
 
+    const startedAt = Date.now();
     const outcome = yield* attemptModel({
       model,
       provider,
@@ -367,11 +370,11 @@ export async function* runChat({
     }
 
     clearHealth(model.id);
-    totalInput += outcome.inputTokens || 0;
-    totalOutput += outcome.outputTokens || 0;
-    totalCost +=
-      ((outcome.inputTokens || 0) / 1_000_000) * model.price_in +
-      ((outcome.outputTokens || 0) / 1_000_000) * model.price_out;
+    totalLatencyMs += Date.now() - startedAt;
+    totalUsage = addUsage(totalUsage, outcome);
+    const price = computeCost(model, provider.id, outcome);
+    totalCost += price.cost;
+    totalSaved += price.saved;
     if (outcome.text) fullText += (fullText ? '\n\n' : '') + outcome.text;
     last = { model, provider };
 
@@ -382,8 +385,9 @@ export async function* runChat({
         modelId: model.id,
         providerId: provider.id,
         label: model.label,
-        usage: { inputTokens: totalInput, outputTokens: totalOutput },
+        usage: { ...totalUsage, latencyMs: totalLatencyMs },
         cost: totalCost,
+        saved: totalSaved,
         text: fullText,
         tools: toolLog,
       };

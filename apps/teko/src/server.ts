@@ -18,7 +18,7 @@ import {
 } from '@teko/ai/db';
 import { usageSummary, recordUsage } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
-import { buildSystemPrompt } from '@teko/ai/context';
+import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
 import { syncModels } from '@teko/ai/sync';
 import * as google from '@teko/ai/connectors/google';
 import * as figma from '@teko/ai/connectors/figma';
@@ -217,7 +217,13 @@ async function handleChat(req, res) {
     }
   }
 
-  const system = buildSystemPrompt({ projectId: session.project_id, profileId, retrieved });
+  const system = buildSystemPrompt({ projectId: session.project_id, profileId });
+  // Contexto volátil entra só na última mensagem: o system fica idêntico entre mensagens
+  // e o prefixo (ferramentas + system) é reaproveitado do cache do provider.
+  const turnContext = buildTurnContext({ retrieved });
+  const modelHistory = history.map((message, index) =>
+    index === history.length - 1 ? { ...message, content: withTurnContext(message.content, turnContext) } : message,
+  );
 
   let acc = '';
   let final = null;
@@ -228,7 +234,7 @@ async function handleChat(req, res) {
       profileId,
       modelId: body.modelId || null,
       system,
-      messages: history,
+      messages: modelHistory,
       signal: controller.signal,
       tools,
       projectPath,
@@ -272,7 +278,11 @@ async function handleChat(req, res) {
       providerId: final.providerId,
       inputTokens: final.usage?.inputTokens || 0,
       outputTokens: final.usage?.outputTokens || 0,
+      cachedInputTokens: final.usage?.cachedInputTokens || 0,
+      cacheWriteTokens: final.usage?.cacheWriteTokens || 0,
+      latencyMs: final.usage?.latencyMs ?? null,
       cost,
+      saved: final.saved || 0,
     });
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(nowIso(), session.id);
