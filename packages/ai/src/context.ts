@@ -98,7 +98,12 @@ export function projectContext(projectId) {
   return parts.join('\n\n');
 }
 
-export function buildSystemPrompt({ projectId = null, profileId = 'code', retrieved = '' } = {}) {
+/**
+ * System prompt ESTÁVEL: perfil, preferências e contexto do projeto.
+ * Não pode ter nada que mude a cada mensagem (hora, trechos da busca), senão
+ * o prompt caching dos providers nunca acerta. O que é volátil vai em buildTurnContext.
+ */
+export function buildSystemPrompt({ projectId = null, profileId = 'code' }: { projectId?: string | null; profileId?: string } = {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   const chunks = [];
 
@@ -112,15 +117,23 @@ export function buildSystemPrompt({ projectId = null, profileId = 'code', retrie
     if (ctx) chunks.push(ctx);
   }
 
-  if (retrieved) chunks.push(retrieved);
-
-  chunks.push(
-    `## Sessão\nData: ${new Date().toLocaleString('pt-BR')}\nPerfil de tarefa: ${profile?.label || profileId}`,
-  );
+  chunks.push(`## Sessão\nPerfil de tarefa: ${profile?.label || profileId}`);
 
   let text = chunks.join('\n\n');
   if (text.length > MAX_CONTEXT_CHARS) {
     text = `${text.slice(0, MAX_CONTEXT_CHARS)}\n\n[contexto truncado]`;
   }
   return text;
+}
+
+/** Contexto volátil da mensagem atual: data e trechos recuperados pela busca. */
+export function buildTurnContext({ retrieved = '', now = new Date() }: { retrieved?: string; now?: Date } = {}) {
+  const chunks = [`Data de hoje: ${now.toLocaleDateString('pt-BR')}`];
+  if (retrieved) chunks.push(retrieved);
+  return `<contexto_da_mensagem>\n${chunks.join('\n\n')}\n</contexto_da_mensagem>`;
+}
+
+/** Junta o contexto volátil à mensagem do usuário (só no que vai pro modelo, não no banco). */
+export function withTurnContext(text: string, turnContext: string) {
+  return turnContext ? `${turnContext}\n\n${text}` : text;
 }

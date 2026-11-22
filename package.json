@@ -21,7 +21,8 @@
     "discover:projects": "npm run discover:projects -w @teko/app --",
     "reset": "npm run reset -w @teko/ai",
     "index": "npm run index -w @teko/ai",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

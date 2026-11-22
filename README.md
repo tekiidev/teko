@@ -35,6 +35,7 @@ npm install
 cp .env.example .env      # opcional: preencha as chaves que você tem
 npm start                 # npm run dev recarrega sozinho
 npm run typecheck         # checa todos os pacotes via Turborepo
+npm test                  # testes (node:test)
 npm run index             # reindexa os projetos com caminho local
 ```
 
@@ -49,6 +50,7 @@ As chaves também podem ser cadastradas pela aba **Conexões** — ficam no SQLi
 - **Ferramentas no chat** — o modelo lista e lê arquivos, busca com regex, escreve, edita e roda comandos. Escrita e execução pedem **aprovação** na própria bolha.
 - **Busca no projeto** — índice local FTS5 (BM25) sobre código, docs, memória, decisões e bugs. Os melhores trechos entram automaticamente no contexto da conversa.
 - **Fallback automático** — 429, cota esgotada, chave inválida, 5xx, timeout: o modelo entra em cooldown e a fila continua.
+- **Prompt caching**: o system prompt fica estável entre mensagens (data e trechos da busca vão junto da mensagem), com breakpoints de cache na Anthropic e aproveitamento do cache automático de OpenAI, Gemini e DeepSeek. Tokens em cache, latência e economia estimada ficam registrados por chamada.
 - **Escolha manual + fallback** — se você escolher um modelo e ele cair, os seguintes do perfil continuam valendo.
 - **Uso** — tokens e custo por sessão, hoje, semana, mês e total; série de 14 dias; quebra por modelo e provider.
 - **Orçamento por modelo** — limite de tokens por semana/mês; ao estourar, o modelo sai da fila.

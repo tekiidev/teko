@@ -246,6 +246,21 @@ function ensureModels() {
   });
 }
 
+/** Adiciona colunas novas em bancos já existentes, sem perder dados. */
+function ensureColumns(table, columns) {
+  const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+ensureColumns('usage_events', {
+  cached_input_tokens: 'INTEGER NOT NULL DEFAULT 0',
+  cache_write_tokens: 'INTEGER NOT NULL DEFAULT 0',
+  latency_ms: 'INTEGER',
+  saved: 'REAL NOT NULL DEFAULT 0',
+});
+
 ensureModels();
 ensureProfiles();
 
