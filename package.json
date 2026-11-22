@@ -27,7 +27,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "voice:setup": "npm run voice:setup -w @teko/ai",
-    "voz": "npm run dev -w @teko/desktop"
+    "voz": "npm run dev -w @teko/desktop",
+    "voz:referencia": "npm run voz:referencia -w @teko/ai --",
+    "voz:clone": "npm run voz:clone -w @teko/ai"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
