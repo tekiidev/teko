@@ -660,6 +660,11 @@ async function mountContextMap() {
   canvas.addEventListener('wheel', (event) => { event.preventDefault(); const p = localPoint(event); zoomAt(Math.exp(-event.deltaY * 0.0015), p.x, p.y); }, { passive: false });
   $('#map-zoom-in').onclick = () => zoomAt(1.2); $('#map-zoom-out').onclick = () => zoomAt(0.83); $('#map-fit').onclick = fitMap;
   if ($('#map-close')) $('#map-close').onclick = () => window.__TAURI__?.core?.invoke('close_context_map');
+  // No app nativo, Esc também fecha o mapa.
+  if (native) {
+    const onEsc = (e) => { if (e.key === 'Escape') window.__TAURI__?.core?.invoke('close_context_map'); };
+    window.addEventListener('keydown', onEsc);
+  }
   $('#map-refresh').onclick = loadGraph;
   $('#map-search').addEventListener('input', () => {
     view.query = $('#map-search').value; clearTimeout(view.searchTimer);
@@ -713,7 +718,7 @@ async function mountContextMap() {
     view.landmarker?.close(); view.landmarker = null;
     const video = $('#context-camera');
     if (video) { video.srcObject = null; video.classList.remove('ativa'); }
-    view.handBase = null; view.tStartedAt = 0; view.gestureOpened = false; view.apartAt = 0; view.lastPair = null;
+    view.handBase = null; view.tStartedAt = 0; view.gestureOpened = false; view.apartAt = 0; view.lastPair = null; view.togetherSince = 0;
     if ($('#map-camera')) $('#map-camera').textContent = '◎ Ativar gesto T';
     gestureStatus(message);
   }
@@ -744,7 +749,15 @@ async function mountContextMap() {
       if (d > 0.3) view.apartAt = now;
       const recentlyApart = now - view.apartAt < 2500;
       if (d < 0.12 && recentlyApart) return closeByGesture();
-      gestureStatus(recentlyApart ? 'Junte as mãos para fechar o mapa' : 'Afaste e junte as mãos para fechar');
+      // Também fecha com as mãos juntas e paradas por meio segundo, sem precisar afastar antes.
+      if (d < 0.14) {
+        view.togetherSince ||= now;
+        if (now - view.togetherSince > 500) return closeByGesture();
+        gestureStatus('Segura as mãos juntas…');
+        return;
+      }
+      view.togetherSince = 0;
+      gestureStatus('Junte as mãos para fechar o mapa');
     } else if (hands.length === 1 && view.lastPair && now - view.lastPair.at < 400 && view.lastPair.d < 0.22 && now - view.apartAt < 2500) {
       // Quando uma mão encosta na outra, o detector costuma perder uma delas.
       closeByGesture();
