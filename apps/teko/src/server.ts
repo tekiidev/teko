@@ -18,6 +18,7 @@ import {
 } from '@teko/ai/db';
 import { usageSummary, recordUsage } from '@teko/ai/usage';
 import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko/ai/router';
+import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
 import { buildSystemPrompt, buildTurnContext, withTurnContext } from '@teko/ai/context';
 import { deleteSkill, findImportable, getSkill, importSkills, listSkills, parseSkillCommand } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
@@ -131,6 +132,7 @@ function publicBootstrap() {
     usage: usageSummary(),
     settings: {
       router: getSetting('router', {}),
+      responseCache: { ...cacheSettings(), ...cacheStats() },
       budgets,
       globalNotes: getSetting('globalNotes', ''),
       keyHints,
@@ -242,6 +244,7 @@ async function handleChat(req, res) {
       tools,
       projectPath,
       sessionId: session.id,
+      noCache: Boolean(body.noCache),
     })) {
       if (event.type === 'delta') acc += event.text;
       if (event.type === 'attempt') lastModel = event.modelId;
@@ -270,7 +273,7 @@ async function handleChat(req, res) {
       final.usage?.inputTokens || 0,
       final.usage?.outputTokens || 0,
       cost,
-      JSON.stringify({ label: final.label, tools: final.tools || [] }),
+      JSON.stringify({ label: final.label, tools: final.tools || [], cacheHit: Boolean(final.cacheHit) }),
       nowIso(),
     );
 
@@ -286,10 +289,11 @@ async function handleChat(req, res) {
       latencyMs: final.usage?.latencyMs ?? null,
       cost,
       saved: final.saved || 0,
+      kind: final.cacheHit ? 'cache_hit' : 'chat',
     });
 
     db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(nowIso(), session.id);
-    send('end', { ok: true, usage: final.usage, cost, modelId: final.modelId });
+    send('end', { ok: true, usage: final.usage, cost, modelId: final.modelId, cacheHit: Boolean(final.cacheHit) });
   } else {
     if (acc) {
       db.prepare(
@@ -971,8 +975,19 @@ async function dispatch(req, res) {
     if ('globalNotes' in body) setSetting('globalNotes', String(body.globalNotes || ''));
     if ('router' in body) setSetting('router', body.router || {});
     if ('budgets' in body) setSetting('budgets', body.budgets || {});
+    if ('responseCache' in body) {
+      const cfg = body.responseCache || {};
+      const ttlHours = Number(cfg.ttlHours);
+      setSetting('responseCache', {
+        enabled: cfg.enabled !== false,
+        ...(Number.isFinite(ttlHours) && ttlHours > 0 ? { ttlHours: Math.min(ttlHours, 24 * 30) } : {}),
+      });
+    }
     return json(res, 200, { ok: true });
   }
+
+  if (resource === 'cache' && method === 'GET') return json(res, 200, { ...cacheSettings(), ...cacheStats() });
+  if (resource === 'cache' && method === 'DELETE') return json(res, 200, { removed: clearCache() });
 
   if (resource === 'figma') {
     if (id === 'status' && method === 'GET') return json(res, 200, figma.status());
@@ -1094,6 +1109,12 @@ const server = http.createServer((req, res) => {
     json(res, 500, { error: String(err.message || err) });
   });
 });
+
+try {
+  pruneCache({ ttlHours: cacheSettings().ttlHours });
+} catch (err) {
+  console.error('[cache]', err.message);
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`\n  teko v${APP_VERSION}`);
