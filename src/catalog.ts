@@ -84,6 +84,7 @@ export const MODELS = [
   { id: 'anthropic/claude-haiku-4-5', provider: 'anthropic', model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', ctx: 200000, priceIn: 1, priceOut: 5, tags: ['bug', 'docs'] },
 
   // OpenAI
+  { id: 'openai/gpt-6-luna', provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', ctx: 1050000, priceIn: 0.1, priceOut: 0.5, tags: ['code', 'docs', 'bug', 'economic'] },
   { id: 'openai/gpt-5.1-codex', provider: 'openai', model: 'gpt-5.1-codex', label: 'GPT-5.1 Codex', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['code', 'review', 'bug'] },
   { id: 'openai/gpt-5.1', provider: 'openai', model: 'gpt-5.1', label: 'GPT-5.1', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['plan', 'docs', 'review'] },
   { id: 'openai/gpt-5.1-mini', provider: 'openai', model: 'gpt-5.1-mini', label: 'GPT-5.1 mini', ctx: 400000, priceIn: 0.25, priceOut: 2, tags: ['docs', 'bug'] },
@@ -193,6 +194,7 @@ export const PROFILES = [
     description: 'Respostas telegráficas e diretas para economizar ~75% de tokens.',
     systemPrompt: `${BASE_SYSTEM} Modo: caveman ultra-terse. Responda de forma direta e telegráfica, sem enrolação ou formalidades. Corte artigos e preâmbulos desnecessários. Código técnico preciso e cirúrgico. Máxima densidade de informação por token.`,
     chain: [
+      'openai/gpt-6-luna',
       'anthropic/claude-haiku-4-5',
       'deepseek/deepseek-chat',
       'google/gemini-2.5-flash',

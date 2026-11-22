@@ -12,6 +12,8 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
+    "mcp": "tsx src/mcp.ts",
+    "discover:projects": "tsx scripts/discover-projects.ts",
     "reset": "tsx scripts/reset.ts",
     "index": "tsx scripts/index.ts",
     "typecheck": "tsc --noEmit"
@@ -20,5 +22,8 @@
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2"
   }
 }

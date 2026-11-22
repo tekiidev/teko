@@ -30,6 +30,7 @@ export async function openaiCompatible({
   const chatMessages = toOpenAI(messages, system);
 
   const baseBody: Record<string, any> = { model, messages: chatMessages, stream: true };
+  if (model === 'gpt-6-luna') baseBody.reasoning_effort = 'none';
   if (maxTokens) baseBody.max_tokens = maxTokens;
   if (tools?.length) baseBody.tools = toolSchemas(tools).openai;
 

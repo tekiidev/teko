@@ -51,6 +51,7 @@ src/
   usage.ts              agregações de tokens/custo
   sync.ts               descoberta de modelos por provider
   providers/            anthropic | openai-compatible | google
+  mcp.ts                contexto compartilhado com agentes via MCP stdio
   connectors/google.ts  OAuth + Drive
   connectors/figma.ts   token + outline de arquivos
 ```
@@ -143,6 +144,12 @@ O que entra no contexto: nome das páginas, tipos e nomes dos frames, dimensões
 ## Integração com o OpenCode
 
 O teko é um serviço local. Pra reaproveitar o roteamento dentro do OpenCode, o caminho mais direto é um plugin/MCP que chame `POST http://127.0.0.1:4780/api/chat` (SSE) — as sessões e o uso continuam sendo registrados aqui.
+
+## Contexto para Claude Code, Codex e Antigravity
+
+O Teko inclui um servidor MCP local (`npm run mcp`) para compartilhar projetos, preferências, decisões, bugs e notas duráveis entre agentes. A busca retorna poucos trechos do índice local; o servidor não envia o histórico completo das conversas. Configure o mesmo servidor em cada cliente e cadastre os caminhos dos repositórios na aba Projetos.
+
+Veja [como conectar os agentes e organizar o contexto](docs/CONTEXTO_UNIFICADO.md).
 
 ## Próximos passos sugeridos
 

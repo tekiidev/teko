@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { db, getSetting, safeJson } from './db.js';
 
-const MAX_CONTEXT_CHARS = 22000;
+// Keep durable context small; details are retrieved from FTS5 for each prompt.
+const MAX_CONTEXT_CHARS = 12000;
 
 function clip(text, n) {
   if (!text) return '';
@@ -25,7 +26,7 @@ function repoTree(projectPath) {
     });
     const files = out.split('\n').filter(Boolean);
     if (!files.length) return null;
-    const shown = files.slice(0, 250);
+    const shown = files.slice(0, 100);
     return `${shown.join('\n')}${files.length > shown.length ? `\n… (+${files.length - shown.length} arquivos)` : ''}`;
   } catch {
     return null;
@@ -55,7 +56,7 @@ export function projectContext(projectId) {
     .prepare(
       `SELECT title, status, decision, consequences FROM decisions
         WHERE project_id = ? AND status != 'descartada'
-        ORDER BY created_at DESC LIMIT 8`,
+        ORDER BY created_at DESC LIMIT 5`,
     )
     .all(projectId);
   if (decisions.length) {
@@ -64,8 +65,8 @@ export function projectContext(projectId) {
         decisions
           .map(
             (d) =>
-              `- [${d.status}] ${d.title}: ${clip(d.decision, 400)}` +
-              (d.consequences ? ` (consequências: ${clip(d.consequences, 200)})` : ''),
+              `- [${d.status}] ${d.title}: ${clip(d.decision, 260)}` +
+              (d.consequences ? ` (consequências: ${clip(d.consequences, 120)})` : ''),
           )
           .join('\n'),
     );
@@ -77,50 +78,21 @@ export function projectContext(projectId) {
         WHERE project_id = ? AND status != 'resolvido'
         ORDER BY CASE severity WHEN 'critica' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
                  created_at DESC
-        LIMIT 8`,
+        LIMIT 4`,
     )
     .all(projectId);
   if (bugs.length) {
     parts.push(
       '## Bugs abertos\n' +
         bugs
-          .map((b) => `- [${b.severity}/${b.status}] ${b.title}${b.area ? ` (${b.area})` : ''}: ${clip(b.actual, 240)}`)
+          .map((b) => `- [${b.severity}/${b.status}] ${b.title}${b.area ? ` (${b.area})` : ''}: ${clip(b.actual, 160)}`)
           .join('\n'),
-    );
-  }
-
-  const docs = db
-    .prepare(
-      `SELECT kind, title, content FROM memory
-        WHERE project_id = ? ORDER BY created_at DESC LIMIT 10`,
-    )
-    .all(projectId);
-  if (docs.length) {
-    parts.push(
-      '## Memória e documentos\n' +
-        docs
-          .map((m) => `### ${m.title || m.kind}\n${clip(m.content, 1200)}`)
-          .join('\n\n'),
     );
   }
 
   const tree = repoTree(project.path);
   if (tree) {
     parts.push(`## Arquivos do repositório (git ls-files)\n${tree}`);
-  }
-
-  const summaries = db
-    .prepare(
-      `SELECT title, summary FROM sessions
-        WHERE project_id = ? AND summary IS NOT NULL AND summary != ''
-        ORDER BY updated_at DESC LIMIT 3`,
-    )
-    .all(projectId);
-  if (summaries.length) {
-    parts.push(
-      '## Resumos de conversas anteriores\n' +
-        summaries.map((s) => `### ${s.title}\n${clip(s.summary, 900)}`).join('\n\n'),
-    );
   }
 
   return parts.join('\n\n');
