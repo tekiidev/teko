@@ -12,3 +12,10 @@ quando oferecido como serviço pela rede.
 Licença comercial: para usar o Teko em produto ou serviço sem cumprir os
 termos da AGPL (por exemplo, sem abrir o código), é preciso uma licença
 comercial do autor. Contato: https://github.com/tekiidev
+
+Nomes e marcas: "Teko", "Teki", "Teki Industries", "Cofu" e os logotipos
+associados são marcas de Felipe Oliveira. Nos termos da seção 7(e) da AGPL,
+esta licença não concede nenhum direito de uso desses nomes ou marcas. Forks
+e trabalhos derivados devem usar outro nome e não podem sugerir que são
+oficiais ou endossados (ex.: "Teko Pro", "Teko+", "Cofu Lite"). Detalhes em
+TRADEMARKS.md.

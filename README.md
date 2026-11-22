@@ -180,6 +180,7 @@ O Teko é open source sob a **[AGPL 3.0](LICENSE)**. Criado por **Felipe Oliveir
 - ✅ Pode rodar pra você, pro seu time ou pra sua empresa
 - 📌 Toda cópia ou fork mantém o crédito ao autor e o aviso do [NOTICE](NOTICE)
 - 🔓 Se modificar e distribuir, ou oferecer como serviço online, o código tem que continuar aberto sob a AGPL
+- 🏷️ Os nomes **Teko**, **Teki**, **Teki Industries** e **Cofu** não vêm junto com o código: fork tem que ter outro nome (nada de "Teko Pro"). Veja [TRADEMARKS.md](TRADEMARKS.md)
 - 💼 Quer usar num produto fechado ou vender sem abrir o código? Isso pede uma **licença comercial**. Fala com [@tekiidev](https://github.com/tekiidev)
 
 Contribuições são bem-vindas. Ao abrir um PR, você concorda que sua contribuição pode ser distribuída sob a AGPL 3.0 e sob a licença comercial do Teko.
