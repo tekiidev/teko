@@ -35,12 +35,6 @@ from chatterbox.mtl_tts import ChatterboxMultilingualTTS  # noqa: E402
 modelo = ChatterboxMultilingualTTS.from_pretrained(device=device)
 trava = threading.Lock()  # um áudio por vez (o modelo não é thread-safe)
 
-# Aquece o modelo com a referência, pra primeira resposta não demorar a mais.
-with trava:
-    modelo.generate("Oi.", language_id="pt", audio_prompt_path=REFERENCIA)
-print(f"[voz] pronto em http://127.0.0.1:{PORTA}", flush=True)
-
-
 def _num(nome, padrao, minimo, maximo):
     try:
         return min(maximo, max(minimo, float(os.environ.get(nome, padrao))))
@@ -52,8 +46,30 @@ def _num(nome, padrao, minimo, maximo):
 # - exaggeration: expressividade (0.25 a 1)
 # - cfg_weight: mais baixo = segue mais o ritmo e o jeito da referência
 # - temperature: mais baixo = mais estável e parecido, menos variação
+# Velocidade 1: processa a gravação de referência uma vez só (antes era a cada frase).
+modelo.prepare_conditionals(REFERENCIA, exaggeration=_num("TEKO_TTS_EXAGGERATION", 0.5, 0.25, 1.0))
+
+# Velocidade 2: o Chatterbox gera até 1000 tokens de áudio por frase e só depois corta.
+# Limita pelo tamanho do texto (~25 tokens por segundo de fala, ~14 letras por segundo, com folga).
+_inferir = modelo.t3.inference
+_texto_atual = {"n": 0}
+
+
+def _inferir_limitado(*args, **kwargs):
+    kwargs["max_new_tokens"] = min(1000, int(_texto_atual["n"] * 2.6) + 60)
+    return _inferir(*args, **kwargs)
+
+
+modelo.t3.inference = _inferir_limitado
+
+# Aquece o modelo, pra primeira resposta não demorar a mais.
+with trava:
+    _texto_atual["n"] = 3
+    modelo.generate("Oi.", language_id="pt")
+print(f"[voz] pronto em http://127.0.0.1:{PORTA}", flush=True)
+
+
 AJUSTES = {
-    "exaggeration": _num("TEKO_TTS_EXAGGERATION", 0.5, 0.25, 1.0),
     "cfg_weight": _num("TEKO_TTS_CFG", 0.3, 0.0, 1.0),
     "temperature": _num("TEKO_TTS_TEMPERATURE", 0.7, 0.3, 1.2),
 }
@@ -62,7 +78,9 @@ AJUSTES = {
 def gerar(texto: str) -> bytes:
     texto = re.sub(r"\s+", " ", texto).strip()[:MAX_CHARS]
     with trava:
-        wav = modelo.generate(texto, language_id="pt", audio_prompt_path=REFERENCIA, **AJUSTES)
+        _texto_atual["n"] = len(texto)
+        # Sem audio_prompt_path: usa a referência já processada na subida.
+        wav = modelo.generate(texto, language_id="pt", **AJUSTES)
     buf = io.BytesIO()
     ta.save(buf, wav.cpu(), modelo.sr, format="wav")
     return buf.getvalue()

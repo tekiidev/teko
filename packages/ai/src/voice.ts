@@ -155,7 +155,8 @@ async function speakClone(text: string, url: string) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(60_000),
+      // Voz clonada local pode demorar (Mac sem memória livre): espera bastante.
+      signal: AbortSignal.timeout(180_000),
     });
     if (!res.ok) return null;
     return Buffer.from(await res.arrayBuffer());

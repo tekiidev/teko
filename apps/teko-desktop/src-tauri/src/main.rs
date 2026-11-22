@@ -27,7 +27,7 @@ async fn voice_local_request(action: String, body: Vec<u8>) -> Result<Vec<u8>, S
     let response = reqwest::Client::new()
         .post(format!("http://127.0.0.1:4780{path}"))
         .header(reqwest::header::CONTENT_TYPE, content_type)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(200))
         .body(body)
         .send()
         .await
