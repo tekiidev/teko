@@ -14,13 +14,15 @@ Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekii
 - Em guarani, *teko* quer dizer algo como "modo de ser, jeito de viver"
 - A ideia é essa: um jeito só de trabalhar com todas as IAs, em vez de uma aba pra cada
 
-## O que o Teko promete
+## O que o Teko faz
 
-- 🧠 **Uma memória pra todas:** projetos, decisões, bugs e documentos entram no contexto de qualquer modelo, e os agentes (Claude Code, Codex, Antigravity) consultam a mesma base via MCP
-- 🔁 **Nunca fica sem resposta:** se o modelo cai, estoura a cota ou dá timeout, o próximo da fila assume sozinho
-- 💸 **Gasta o mínimo:** modelo barato pra triar, modelo forte só quando vale a pena, orçamento por modelo e cada token contado
-- 🛡️ **Seguro por padrão:** roda local, as chaves ficam na sua máquina, ferramentas presas à pasta do projeto e tudo que escreve ou executa pede aprovação
-- 🏠 **Seu, de verdade:** SQLite local, busca local, nada de histórico mandado pra terceiros sem você saber
+- 🧠 **Uma memória pra todas:** projetos, decisões, bugs e documentos entram no contexto do modelo escolhido, e agentes como Claude Code, Codex e Antigravity podem consultar a mesma base via MCP
+- 🔁 **Troca de modelo sozinho:** se o modelo cai, estoura a cota ou dá timeout, o Teko tenta o próximo da fila
+- 💸 **Ajuda a controlar o gasto:** perfis com fila de modelos (incluindo um modo econômico), orçamento por modelo e registro de tokens e custo de cada conversa
+- 🛡️ **Segurança desde o começo:** roda local, as chaves ficam no banco da sua máquina, as ferramentas ficam presas à pasta do projeto e escrita ou execução pedem a sua aprovação
+- 🏠 **Local primeiro:** banco SQLite e busca rodam na sua máquina. O que você manda no chat vai para o provedor de IA que você configurou, sob os termos dele
+
+> O Teko está em desenvolvimento e é fornecido **sem garantia**, como diz a [AGPL 3.0](LICENSE) nas seções 15 e 16. Revise o que as IAs propõem antes de aprovar e use por sua conta e risco.
 
 Backend TypeScript executado com `tsx`, sem etapa de build. Requer Node 22.5+ (`node:sqlite`).
 
