@@ -10,6 +10,7 @@ Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekii
 
 ## Por que "Teko"
 
+- 🗣️ **Pronúncia:** "te-KÔ", com a força na última sílaba, como no guarani (não é "TÉ-ko")
 - Vem de **Teki**, o apelido de quem fez
 - Em guarani, *teko* quer dizer algo como "modo de ser, jeito de viver"
 - A ideia é essa: um jeito só de trabalhar com todas as IAs, em vez de uma aba pra cada
