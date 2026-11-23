@@ -273,8 +273,14 @@ let estaloLigado = true; // item "Ligar com estalo de dedos" do menu da barra
 let detectorEstalo = null;
 
 /** Estalo = mesmo que falar "Teko" sozinho: bipe e ele começa a ouvir. */
+// Juntar as mãos (fechar o mapa, desligar a aura) faz barulho parecido com estalo.
+// Com o mapa aberto, logo depois de fechar e com as mãos juntas na câmera, estalo não conta.
+let estaloSilenciadoAte = 0;
+let mapaAbertoAgora = false;
+
 function chamadoPorEstalo() {
   if (modo !== 'vigia') return;
+  if (mapaAbertoAgora || performance.now() < estaloSilenciadoAte) return;
   // O estalo liga a aura e ela fica na tela (juntar as mãos desliga).
   if (!auraLigada) window.__TAURI__?.core?.invoke('definir_aura', { visivel: true }).catch(() => {});
   trecho = null; // o som do estalo não vai pro reconhecimento de "Teko"
@@ -940,25 +946,56 @@ function aplicarAuraVisivel() {
   aura.repouso(auraLigada);
 }
 
-// Juntar as mãos (palma com palma, lado a lado, paradas ~0,6 s) desliga a aura.
-// Mãos paralelas: não se confunde com o T, que é com as mãos cruzadas.
+// Juntar as mãos desliga a aura, igual fechar o mapa: juntas e paradas ~0,5 s, ou
+// afastar e juntar. Mãos cruzadas são o T e não contam.
+// Com as palmas encostadas a câmera às vezes perde uma das mãos: se uma some logo depois
+// de estarem juntas, continua valendo.
 let juntasDesde = 0;
 let desligouEm = 0;
+let ultimoPar = null; // { d, t } da última vez que as duas mãos apareceram
+let afastadasEm = 0;
+
+const anguloMao = (m) => Math.atan2(m[9].y - m[0].y, m[9].x - m[0].x);
+
+/** Distância entre as mãos agora (ou logo antes de a câmera perder uma), ou null. */
+function distanciaMaos(maos, agora) {
+  if (maos.length >= 2) return Math.hypot(maos[0][9].x - maos[1][9].x, maos[0][9].y - maos[1][9].y);
+  if (maos.length === 1 && ultimoPar && agora - ultimoPar.t < 400) return ultimoPar.d;
+  return null;
+}
+
+/** Mãos perto uma da outra: aí não é pinça (o polegar encosta no indicador com as palmas juntas). */
+function maosPerto(maos, agora) {
+  const d = distanciaMaos(maos, agora);
+  const perto = d != null && d < 0.2;
+  // Juntar as mãos faz barulho; não pode virar "estalo".
+  if (perto) estaloSilenciadoAte = Math.max(estaloSilenciadoAte, agora + 1500);
+  return perto;
+}
+
 function gestoJuntar(maos, agora) {
-  if (!auraLigada || maos.length < 2 || agora - desligouEm < 1500) { juntasDesde = 0; return false; }
-  const [m1, m2] = maos;
-  const d = Math.hypot(m1[9].x - m2[9].x, m1[9].y - m2[9].y);
-  const angulo = (m) => Math.atan2(m[9].y - m[0].y, m[9].x - m[0].x);
-  const paralelas = Math.abs(Math.cos(angulo(m1) - angulo(m2))) > 0.87;
-  if (d < 0.14 && paralelas) {
+  if (maos.length >= 2) {
+    const d = Math.hypot(maos[0][9].x - maos[1][9].x, maos[0][9].y - maos[1][9].y);
+    ultimoPar = { d, t: agora };
+    if (d > 0.3) afastadasEm = agora;
+    // Cruzadas = T, não é juntar.
+    if (Math.abs(Math.cos(anguloMao(maos[0]) - anguloMao(maos[1]))) < 0.6) { juntasDesde = 0; return false; }
+  }
+  if (!auraLigada || gestosEmT || agora - desligouEm < 1500) { juntasDesde = 0; return false; }
+  const d = distanciaMaos(maos, agora);
+  if (d == null) { juntasDesde = 0; return false; }
+  const desligar = () => {
+    juntasDesde = 0;
+    afastadasEm = 0;
+    desligouEm = agora;
+    window.__TAURI__.core.invoke('definir_aura', { visivel: false }).catch(() => {});
+    mostrar('teko', 'Aura desligada. Estale os dedos pra chamar de novo.', 2500);
+    return true;
+  };
+  if (d < 0.12 && agora - afastadasEm < 2500) return desligar(); // afastar e juntar
+  if (d < 0.16) {
     juntasDesde = juntasDesde || agora;
-    if (agora - juntasDesde >= 600) {
-      juntasDesde = 0;
-      desligouEm = agora;
-      window.__TAURI__.core.invoke('definir_aura', { visivel: false }).catch(() => {});
-      mostrar('teko', 'Aura desligada. Estale os dedos pra chamar de novo.', 2500);
-      return true;
-    }
+    if (agora - juntasDesde >= 500) return desligar();
   } else {
     juntasDesde = 0;
   }
@@ -1083,14 +1120,22 @@ async function ligarGestosAgora() {
         if (aprovacao && detectedHands.some((m) => Math.hypot(m[4].x - m[8].x, m[4].y - m[8].y) < 0.045)) {
           aprovacao.responder(true);
         }
-        // Pinça sem aprovação pendente = mover ou redimensionar a aura.
-        if (!aprovacao && !gestosMapaAberto && (await tratarPinca(detectedHands, performance.now()))) {
+        const agoraGesto = performance.now();
+        // Logo depois do T, afastar as mãos é abrir o mapa: diagonal e juntar ficam de fora.
+        const depoisDoT = gestosEmT || (gestosBase != null && agoraGesto - gestosInicio < 2500);
+        // Juntar as mãos (desliga a aura) vem antes da pinça: com as palmas juntas o polegar
+        // encosta no indicador e virava "pinça de duas mãos".
+        if (!depoisDoT && !gestosMapaAberto && gestoJuntar(detectedHands, agoraGesto)) {
           if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
           return;
         }
-        // Diagonal centraliza a aura; desligado logo depois do T (aí descolar é abrir o mapa).
-        const depoisDoT = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500);
-        if (!depoisDoT && !gestosMapaAberto && (gestoDiagonal(detectedHands, performance.now()) || gestoJuntar(detectedHands, performance.now()))) {
+        // Pinça sem aprovação pendente = mover ou redimensionar a aura (só com as mãos longe).
+        if (!aprovacao && !gestosMapaAberto && !maosPerto(detectedHands, agoraGesto) && (await tratarPinca(detectedHands, agoraGesto))) {
+          if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+          return;
+        }
+        // Diagonal centraliza a aura.
+        if (!depoisDoT && !gestosMapaAberto && gestoDiagonal(detectedHands, agoraGesto)) {
           if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
           return;
         }
@@ -1193,9 +1238,19 @@ if (window.__TAURI__) {
     detectorEstalo?.reset();
     mostrar('teko', estaloLigado ? 'Um estalo de dedos chama o Teko.' : 'Estalo desligado.', 2200);
   });
-  listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
+  listen('gestos', ({ payload }) => {
+    // Os gestos voltam quando o mapa fecha: o barulho de juntar as mãos ainda está no ar.
+    if (payload && mapaAbertoAgora) {
+      mapaAbertoAgora = false;
+      estaloSilenciadoAte = performance.now() + 2500;
+    }
+    return payload ? ligarGestos() : desligarGestos();
+  });
   listen('cancelar', () => cancelarConversa());
-  listen('mapa-aberto', () => desligarGestos(true));
+  listen('mapa-aberto', () => {
+    mapaAbertoAgora = true;
+    desligarGestos(true);
+  });
   // "Centralizar aura" no menu da barra: esquece a posição guardada.
   listen('aura-centralizada', () => { try { localStorage.removeItem(AURA_GUARDADA); } catch { /* ok */ } });
   restaurarAura();
