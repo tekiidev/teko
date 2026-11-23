@@ -144,7 +144,7 @@ npm run cofu              # http://localhost:4790
 - Tocar no item = ele cai no cofo; o cofo enche e muda de cor quando passa do orçamento
 - "Tem em casa" vai pra prateleira; "Nova feira" esvazia o cofo
 - Dados só no aparelho (IndexedDB)
-- A IA da lista mora no servidor privado do Cofu (`COFU_SERVER_URL` e `COFU_SERVER_TOKEN` no `.env`); sem ele, o leitor simples monta a lista. O app nunca vê a chave da IA
+- A IA da lista roda num serviço separado (`COFU_SERVER_URL` e `COFU_SERVER_TOKEN` no `.env`); sem ele, o leitor simples monta a lista. O app nunca vê a chave da IA
 - Preços são estimativas da IA, não preços reais de mercado (isso é a fase 2)
 
 ## O que já funciona

@@ -1,8 +1,8 @@
 import { ListaSugeridaSchema, type ItemSugerido } from './items.ts';
 
 /**
- * A IA da lista mora no servidor privado do Cofu (cofu-server): prompt, modelos e
- * ajustes ficam lá. Este app (público) só repassa o pedido, com o token compartilhado,
+ * A IA da lista roda num serviço separado (COFU_SERVER_URL): prompt, modelos e
+ * ajustes ficam lá. Este app só repassa o pedido, com o token compartilhado,
  * e valida a resposta com Zod antes de usar.
  * Sem o servidor configurado, ou se ele falhar, o app usa o leitor simples no aparelho.
  */
