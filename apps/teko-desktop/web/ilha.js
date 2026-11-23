@@ -6,7 +6,6 @@
 // Com o mouse em cima abre o painel: falar, mapa, parar e um campo pra pedir digitando.
 // Quem conversa de verdade é a aura (voz.js); a ilha só espelha o estado e manda pedidos.
 
-const API = 'http://127.0.0.1:4780/api';
 const { invoke } = window.__TAURI__.core;
 const { listen, emit } = window.__TAURI__.event;
 
@@ -68,14 +67,13 @@ function aplicarVolume(v) {
 
 async function gastoHoje() {
   try {
-    const r = await fetch(`${API}/usage`);
-    const u = await r.json();
+    const u = JSON.parse(await invoke('ilha_uso'));
     const custo = Number(u?.today?.cost || 0);
     const poupado = Number(u?.today?.saved || 0);
     const fmt = (n) => (n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
     document.getElementById('gasto').textContent = poupado > 0 ? `${fmt(custo)} · poupou ${fmt(poupado)}` : fmt(custo);
   } catch {
-    document.getElementById('gasto').textContent = 'servidor fora do ar';
+    document.getElementById('gasto').textContent = 'servidor fora do ar (npm start)';
   }
 }
 

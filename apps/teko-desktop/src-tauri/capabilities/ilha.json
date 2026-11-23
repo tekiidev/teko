@@ -9,6 +9,7 @@
     "core:event:default",
     "allow-open-context-map",
     "allow-ilha-info",
-    "allow-ilha-area"
+    "allow-ilha-area",
+    "allow-ilha-uso"
   ]
 }

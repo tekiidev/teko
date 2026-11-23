@@ -127,6 +127,22 @@ pub fn vigiar_mouse(app: AppHandle) {
     });
 }
 
+/// Gasto do dia pra ilha. Passa pelo Rust porque o WebView não deixa a página do app
+/// (tauri://, segura) chamar http://127.0.0.1 direto.
+#[tauri::command]
+pub async fn ilha_uso() -> Result<String, String> {
+    let resposta = reqwest::Client::new()
+        .get("http://127.0.0.1:4780/api/usage")
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|err| format!("servidor fora do ar: {err}"))?;
+    if !resposta.status().is_success() {
+        return Err(format!("servidor respondeu HTTP {}", resposta.status()));
+    }
+    resposta.text().await.map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub fn ilha_info(info: tauri::State<'_, InfoIlha>) -> InfoIlha {
     info.inner().clone()
