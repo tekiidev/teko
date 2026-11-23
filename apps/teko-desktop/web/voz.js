@@ -12,6 +12,7 @@
 
 import { criarAura } from './aura.js';
 import { criarDetectorEstalo } from './estalo.js';
+import { comandoLocal } from './comandos.js';
 
 const API = 'http://127.0.0.1:4780/api';
 const ROTAS_VOZ = {
@@ -333,7 +334,8 @@ async function conferirTeko(wav) {
     }
     ciclo += 1;
     bipe();
-    if (rest && rest.split(/\s+/).length >= 2) {
+    // Comando de uma palavra ("Teko, brochar") também vai direto, sem esperar mais fala.
+    if (rest && (rest.split(/\s+/).length >= 2 || comandoLocal(rest))) {
       // "Teko, qual a capital do Maranhão?" -> já é a pergunta.
       mostrar('você', rest);
       await responder(rest, ciclo);
@@ -472,7 +474,34 @@ async function terminarGravacao() {
 
 // ---------- resposta ----------
 
+/** Comandos curtos (mapa, aura, gestos, autodestruir): o app resolve na hora, sem IA. */
+async function executarComando(cmd, meu) {
+  modo = 'ocupado';
+  mostrar('teko', cmd.fala);
+  const invoke = window.__TAURI__?.core?.invoke;
+  const dizer = async () => { try { await falar(cmd.fala, meu); } catch { /* sem voz: fica o texto */ } };
+  try {
+    if (cmd.acao === 'sair') {
+      await dizer();
+      await invoke?.('sair_teko');
+      return;
+    }
+    if (cmd.acao === 'mapa') await invoke?.('open_context_map');
+    else if (cmd.acao === 'aura-ligar') await invoke?.('definir_aura', { visivel: true });
+    else if (cmd.acao === 'aura-desligar') await invoke?.('definir_aura', { visivel: false });
+    else if (cmd.acao === 'gestos-ligar') await invoke?.('definir_gestos', { ativo: true });
+    else if (cmd.acao === 'gestos-desligar') await invoke?.('definir_gestos', { ativo: false });
+    await dizer();
+  } catch (err) {
+    mostrar('erro', `Não consegui: ${err?.message || err}`, 4000);
+  }
+  if (meu === ciclo) mostrar('teko', cmd.fala, 2000);
+  fim(meu);
+}
+
 async function responder(texto, meu) {
+  const comando = comandoLocal(texto);
+  if (comando) return executarComando(comando, meu);
   definirEsc(true);
   modo = 'ocupado';
   aura.estado = 'pensando';
