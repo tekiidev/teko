@@ -44,7 +44,7 @@ export function banner(version: string) {
     '',
     ...lines,
     '',
-    `  ${c.white(c.bold('teko'))} ${c.dim(`v${version}`)}  ${c.muted('fala-se TÉ-ko')}  ${c.dim('feito por')} ${c.accent('tekidev')}`,
+    `  ${c.white(c.bold('teko'))} ${c.dim(`v${version}`)}  ${c.dim('feito por')} ${c.accent('tekidev')}`,
     '',
   ].join('\n');
 }
