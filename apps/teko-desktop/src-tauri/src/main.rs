@@ -84,6 +84,26 @@ fn main() {
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
         .on_window_event(move |window, event| {
+            // Minimizar o mapa = voltar pro Teko: fecha a janela (o Destroyed abaixo traz a aura de volta).
+            // No macOS nem sempre vem Resized ao minimizar; perder o foco sempre vem, então confere
+            // de novo meio segundo depois (a animação de minimizar termina nesse tempo).
+            if window.label() == "context-map" {
+                match event {
+                    tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => {
+                        let _ = window.close();
+                    }
+                    tauri::WindowEvent::Focused(false) => {
+                        let mapa = window.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            if mapa.is_minimized().unwrap_or(false) {
+                                let _ = mapa.close();
+                            }
+                        });
+                    }
+                    _ => {}
+                }
+            }
             if window.label() == "context-map" && matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(aura) = window.app_handle().get_webview_window("aura") {
                     let _ = aura.show();
