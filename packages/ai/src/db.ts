@@ -299,6 +299,12 @@ function applyChainAdditions() {
 }
 
 seed();
+/** Provedores novos do catálogo entram em bancos que já existem (sem mexer nos editados). */
+function ensureProviders() {
+  const insert = db.prepare('INSERT OR IGNORE INTO providers (id, label, kind, base_url, key_env) VALUES (?, ?, ?, ?, ?)');
+  for (const p of PROVIDERS) insert.run(p.id, p.label, p.kind, p.baseUrl, p.keyEnv ?? null);
+}
+
 function ensureModels() {
   const insert = db.prepare(
     `INSERT OR IGNORE INTO models
@@ -325,6 +331,7 @@ ensureColumns('usage_events', {
   saved: 'REAL NOT NULL DEFAULT 0',
 });
 
+ensureProviders();
 ensureModels();
 ensureProfiles();
 upgradeProfileChains();
