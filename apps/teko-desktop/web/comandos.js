@@ -61,6 +61,38 @@ export function normalizar(texto) {
     .trim();
 }
 
+/** Quantas letras trocar, tirar ou pôr pra ir de `a` a `b` (distância de edição). */
+function distancia(a, b) {
+  const linha = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    let anterior = linha[0];
+    linha[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const guardado = linha[j];
+      linha[j] = Math.min(linha[j] + 1, linha[j - 1] + 1, anterior + (a[i - 1] === b[j - 1] ? 0 : 1));
+      anterior = guardado;
+    }
+  }
+  return linha[b.length];
+}
+
+/** Palavra que soa como "Teko" (Teco, Deco, Tecu, Tico...): até 2 letras de diferença. */
+export function pareceTeko(palavra) {
+  const p = normalizar(palavra).replace(/ /g, '');
+  return p.length >= 3 && p.length <= 6 && distancia(p, 'teko') <= 2;
+}
+
+/**
+ * "Teko" mal ouvido + comando conhecido: "Deco, farmar aura" vale como "Teko, farmar aura".
+ * Só pra comando local; pergunta comum continua exigindo o Teko certo (pra não disparar
+ * quando você fala com outra pessoa).
+ */
+export function comandoComChamadoParecido(texto) {
+  const palavras = String(texto || '').trim().replace(/^(ei|oi)[\s,]+/i, '').split(/[\s,.!?:;-]+/).filter(Boolean);
+  if (palavras.length < 2 || !pareceTeko(palavras[0])) return null;
+  return comandoLocal(palavras.slice(1).join(' '));
+}
+
 /** Devolve { acao, fala } se o texto for um comando local, ou null. */
 export function comandoLocal(texto) {
   const t = normalizar(texto);

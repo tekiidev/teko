@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { comandoLocal } from './comandos.js';
+import { comandoLocal, comandoComChamadoParecido, pareceTeko } from './comandos.js';
 
 const acao = (t) => comandoLocal(t)?.acao ?? null;
 
@@ -35,6 +35,24 @@ test('ativar e desativar gestos', () => {
   assert.equal(acao('Teko, desativar gestos.'), 'gestos-desligar');
   assert.equal(acao('desliga os gestos'), 'gestos-desligar');
   assert.equal(acao('para os gestos'), 'gestos-desligar');
+});
+
+test('Teko mal ouvido vale quando o resto é um comando', () => {
+  const ac = (t) => comandoComChamadoParecido(t)?.acao ?? null;
+  assert.equal(ac('Deco, farmar aura.'), 'aura-ligar');
+  assert.equal(ac('Tecu brochar'), 'aura-desligar');
+  assert.equal(ac('Tico, abrir mapa neural'), 'mapa');
+  assert.equal(ac('Ei, Teco, autodestruir'), 'sair');
+  assert.equal(ac('Tekô, ativar gestos'), 'gestos-ligar');
+});
+
+test('Teko mal ouvido com pergunta comum não dispara', () => {
+  const ac = (t) => comandoComChamadoParecido(t)?.acao ?? null;
+  assert.equal(ac('Deco, qual a capital do Maranhão?'), null);
+  assert.equal(ac('Pedro, abre o mapa'), null); // nome longe de Teko
+  assert.equal(ac('farmar aura'), null); // sem chamado nenhum
+  assert.equal(pareceTeko('Diego'), false);
+  assert.equal(pareceTeko('Teco'), true);
 });
 
 test('pergunta longa ou comum segue pra IA', () => {
