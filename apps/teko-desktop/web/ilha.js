@@ -155,6 +155,13 @@ document.getElementById('cancelar').onclick = () => {
   emit('cancelar');
 };
 document.getElementById('mapa').onclick = () => invoke('open_context_map').catch(() => {});
+// Liga/desliga a aura; o menu da barra acompanha.
+document.getElementById('aura').onclick = () => invoke('definir_aura', { visivel: null }).catch(() => {});
+listen('aura-visivel', ({ payload }) => {
+  const botao = document.getElementById('aura');
+  botao.classList.toggle('ligado', Boolean(payload));
+  botao.setAttribute('aria-pressed', String(Boolean(payload)));
+});
 document.getElementById('enviar').onclick = enviar;
 pedido.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { pedido.value = ''; abrir(false); return; }

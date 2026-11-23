@@ -39,6 +39,8 @@
     #gestos-preview.ativa {
       visibility: visible; opacity: 1;
     }
+    /* Aura desligada: nada desenhado (microfone, câmera e gestos seguem rodando). */
+    body.sem-aura #aura, body.sem-aura #legenda, body.sem-aura #gestos-preview, body.sem-aura #gesto-status { visibility: hidden !important; }
     #gesto-status {
       position: fixed; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%);
       max-width: calc(100% - 28px); padding: 6px 10px; border-radius: 999px;
