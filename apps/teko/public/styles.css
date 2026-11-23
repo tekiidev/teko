@@ -592,3 +592,11 @@ body::before {
 .map-help dt { font-family: var(--mono); color: var(--ice); }
 .map-help dd { margin: 0; color: var(--muted); }
 .context-map-page { position: relative; }
+
+/* cursor do gesto (indicador) no mapa */
+.map-cursor {
+  position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; z-index: 25; pointer-events: none;
+  border: 2px solid var(--cyan); border-radius: 50%; box-shadow: 0 0 12px var(--accent-glow);
+  transition: width .12s, height .12s, left .12s, top .12s, background .12s;
+}
+.map-cursor.pinca { left: -6px; top: -6px; width: 12px; height: 12px; background: var(--accent); }
