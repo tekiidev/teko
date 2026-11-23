@@ -67,6 +67,7 @@ Sem `npm link`: `npm run teko -- "pergunta"`.
 
 - Dentro de uma pasta cadastrada na aba Projetos, o projeto entra no contexto sozinho (e as ferramentas de arquivo ficam ativas)
 - Ferramentas que alteram algo pedem confirmação no próprio terminal
+- `/desfazer` (ou "Teko, desfaz isso" na voz) volta o que a IA escreveu nesta conversa, com aprovação; se você mexeu no arquivo depois, ele não passa por cima
 - `teko limpar` apaga só do banco local (`data/teko.db`); o histórico de custo fica, e o que cada provedor guarda das chamadas de API segue a política dele
 - Na conversa: `/modelo` (`/model`, `/models`, `/switch`), `/perfil` (`/profile`), `/projeto` (`/project`), `/nova` (`/new`, `/clear`), `/uso` (`/usage`), `/limpar` (`/apagar`), `/skills`, `/semcache` (`/nocache`), `/sair` (`/exit`, `/quit`) e qualquer skill (`/vagas ...`)
 - Escolhas (modelo, perfil, aprovações, limpar) são com ↑ ↓ e Enter; Esc cancela

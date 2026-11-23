@@ -4,6 +4,7 @@ import { env } from './config.js';
 import { tokensSince, windowStart } from './usage.js';
 import { createApproval, resolveApproval } from './approvals.js';
 import { getTool, executeTool, previewFor } from './tools/index.js';
+import { previaDesfazer } from './undo.js';
 import { addUsage, computeCost, type Usage } from './pricing.js';
 import { cacheKey, cacheSettings, getCached, putCached } from './response-cache.js';
 
@@ -459,7 +460,9 @@ export async function* runChat({
       }
 
       const args = call.args && typeof call.args === 'object' ? call.args : {};
-      const preview = previewFor(call.name, args);
+      // Desfazer mostra os arquivos de verdade que vão voltar, não só a quantidade.
+      const desfazendo = call.name === 'undo_changes' ? previaDesfazer({ sessionId, root: projectPath, n: args?.n || 1 }) : null;
+      const preview = desfazendo?.length ? `desfazer:\n${desfazendo.join('\n')}` : previewFor(call.name, args);
       const approval = tool.requiresApproval
         ? createApproval({ sessionId, tool: call.name, args, preview })
         : null;
@@ -487,7 +490,7 @@ export async function* runChat({
       }
 
       yield { type: 'tool_running', id: eventId, callId: call.id, name: call.name };
-      const result: any = await executeTool(call.name, args, { root: projectPath, projectId });
+      const result: any = await executeTool(call.name, args, { root: projectPath, projectId, sessionId });
       const output = String(result.output || '');
       const forModel = output.slice(0, 12000);
 

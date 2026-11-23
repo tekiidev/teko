@@ -55,6 +55,7 @@ export const AJUDA: SecaoAjuda[] = [
       { como: 'teko uso · modelos · skills', faz: 'gasto, modelos prontos e skills' },
       { como: '/modelo · /models · /switch', faz: 'escolhe o modelo com ↑ ↓ e Enter' },
       { como: '/perfil · /projeto · /nova · /uso', faz: 'troca perfil, projeto, conversa nova, gasto' },
+      { como: '/desfazer [n] · "Teko, desfaz isso"', faz: 'volta o que a IA escreveu nesta conversa (pede aprovação)' },
       { como: 'teko limpar · /limpar', faz: 'apaga conversas (todas, só voz ou só do projeto), pede confirmação' },
       { como: '↑ ↓ · Enter · Esc', faz: 'nas escolhas: move, confirma, cancela' },
       { como: '/semcache · /sair', faz: 'liga/desliga o cache local, sai' },
