@@ -194,6 +194,12 @@ fn centralizar_aura(app: &tauri::AppHandle) {
     }
 }
 
+/// Gesto diagonal na aura: mesmo efeito do "Centralizar aura" do menu.
+#[tauri::command]
+fn aura_centralizar(app: tauri::AppHandle) {
+    centralizar_aura(&app);
+}
+
 #[tauri::command]
 fn close_context_map(window: tauri::WebviewWindow) -> Result<(), String> {
     window.close().map_err(|err| err.to_string())
@@ -243,7 +249,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {

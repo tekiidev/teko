@@ -865,6 +865,33 @@ async function tratarPinca(maos, agora) {
   return true;
 }
 
+// Diagonal: mãos já separadas se afastando rápido em diagonais opostas (↖ ↘ ou ↗ ↙)
+// centraliza a aura no tamanho padrão. Mesmo gesto que abre a rede inteira no mapa.
+let historicoMaos = [];
+let diagonalEm = 0;
+
+/** Devolve true quando o gesto diagonal aconteceu neste quadro. */
+function gestoDiagonal(maos, agora) {
+  if (maos.length < 2) { historicoMaos = []; return false; }
+  const [esq, dir] = [maos[0][9], maos[1][9]].sort((p, q) => p.x - q.x);
+  const d = Math.hypot(esq.x - dir.x, esq.y - dir.y);
+  historicoMaos = historicoMaos.filter((h) => agora - h.t < 500);
+  historicoMaos.push({ t: agora, a: { x: esq.x, y: esq.y }, b: { x: dir.x, y: dir.y }, d });
+  const antigo = historicoMaos[0];
+  if (!antigo || agora - antigo.t < 150 || antigo.d < 0.2 || agora - diagonalEm < 1500) return false;
+  const da = { x: esq.x - antigo.a.x, y: esq.y - antigo.a.y };
+  const db = { x: dir.x - antigo.b.x, y: dir.y - antigo.b.y };
+  const diagonal = (v) => Math.min(Math.abs(v.x), Math.abs(v.y)) / Math.max(Math.abs(v.x), Math.abs(v.y), 1e-6) > 0.35;
+  const forte = (v) => Math.hypot(v.x, v.y) > 0.07;
+  if (!(forte(da) && forte(db) && diagonal(da) && diagonal(db) && da.x * db.x + da.y * db.y < 0 && d - antigo.d > 0.1)) return false;
+  diagonalEm = agora;
+  historicoMaos = [];
+  window.__TAURI__.core.invoke('aura_centralizar').catch((err) => console.warn('[Teko] centralizar aura:', err));
+  statusGesto('Aura no centro, tamanho padrão');
+  setTimeout(() => statusGesto(''), 1500);
+  return true;
+}
+
 /** Volta pra onde você deixou a aura da última vez. */
 async function restaurarAura() {
   try {
@@ -976,9 +1003,8 @@ async function ligarGestosAgora() {
         }
         const result = gestosLandmarker.detectForVideo(video, timestamp);
         const detectedHands = result.landmarks || [];
-        // A janelinha da câmera só aparece com um gesto em andamento (T, descolar ou pinça),
-        // não só porque as duas mãos entraram na imagem.
-        const janelaAberta = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500) || Boolean(pegada);
+        // A janelinha da câmera aparece com as duas mãos na imagem (ou segurando a aura na pinça).
+        const janelaAberta = detectedHands.length >= 2 || Boolean(pegada);
         preview?.classList.toggle('ativa', janelaAberta);
         aura.janelaCamera(janelaAberta);
         // Pinça (polegar encostando no indicador) confirma uma aprovação pendente.
@@ -987,6 +1013,12 @@ async function ligarGestosAgora() {
         }
         // Pinça sem aprovação pendente = mover ou redimensionar a aura.
         if (!aprovacao && !gestosMapaAberto && (await tratarPinca(detectedHands, performance.now()))) {
+          if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+          return;
+        }
+        // Diagonal centraliza a aura; desligado logo depois do T (aí descolar é abrir o mapa).
+        const depoisDoT = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500);
+        if (!depoisDoT && !gestosMapaAberto && gestoDiagonal(detectedHands, performance.now())) {
           if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
           return;
         }
@@ -1020,7 +1052,8 @@ async function ligarGestosAgora() {
         // fechem ou que o detector perca uma mão por um instante.
         if (emJanela && !gestosMapaAberto && detectedHands.length >= 2) {
           const d = Math.hypot(detectedHands[0][9].x - detectedHands[1][9].x, detectedHands[0][9].y - detectedHands[1][9].y);
-          if (d > gestosBase + .05) await abrirMapa();
+          // Afastar de verdade (~9% da imagem), não só um tremor das mãos depois do T.
+          if (d > gestosBase + .09) await abrirMapa();
         }
         if (gestosMapaAberto) {
           // já abriu neste quadro
@@ -1037,9 +1070,10 @@ async function ligarGestosAgora() {
           // Encostando: ponta de algum dedo de uma mão perto da palma da outra.
           const encosta = (p, q) => Math.min(...[4, 8, 12, 16, 20].flatMap((t) => [0, 5, 9, 13, 17].map((k) => Math.hypot(p[t].x - q[k].x, p[t].y - q[k].y))));
           const juntas = distance < .33 || Math.min(encosta(m1, m2), encosta(m2, m1)) < .1;
-          // Firme por 0,2 s antes de valer: mão passando na frente da câmera não arma o T.
+          // Mão passando na frente da câmera não arma o T.
           if (cruzadas && juntas) tDesde = tDesde || now; else tDesde = 0;
-          const formsT = cruzadas && juntas && now - tDesde >= 200;
+          // Firme por 0,35 s: o mapa só abre de propósito.
+          const formsT = cruzadas && juntas && now - tDesde >= 350;
           if (formsT) {
             aura.formaT(true);
             statusGesto('T reconhecido · agora descole as mãos');
