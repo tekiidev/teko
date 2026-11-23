@@ -28,6 +28,10 @@ export const AJUDA: SecaoAjuda[] = [
       { como: 'juntar as mãos e segurar meio segundo', faz: 'fecha o mapa (afastar e juntar também fecha)' },
       { como: 'pinça (polegar no indicador)', faz: 'confirma quando ele pergunta "Posso…?"' },
       { como: 'minimizar o mapa', faz: 'volta pro Teko' },
+      { como: 'apontar com o indicador (no mapa)', faz: 'mostra o cursor' },
+      { como: 'pinça rápida (no mapa)', faz: 'seleciona o ponto embaixo do cursor' },
+      { como: 'pinça e arrastar (no mapa)', faz: 'move o mapa' },
+      { como: 'pinça com as duas mãos e afastar/aproximar', faz: 'amplia/diminui o mapa' },
     ],
   },
   {

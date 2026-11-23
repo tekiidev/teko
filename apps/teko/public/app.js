@@ -268,6 +268,7 @@ async function mountContextMap() {
         <div class="map-stage" id="map-stage">
           <canvas id="context-canvas" aria-label="Mapa visual do contexto"></canvas>
           <video id="context-camera" playsinline muted></video>
+          <div class="map-cursor" id="map-cursor" hidden></div>
           <div class="map-hud"><span id="map-count">Carregando rede…</span><span id="map-camera-status">Câmera desligada</span></div>
           <div class="graph-panel" id="graph-panel" hidden>
             <section><h4>Filtros</h4>
@@ -768,6 +769,61 @@ async function mountContextMap() {
       startGestures();
     });
   }
+  // ---- navegar com gestos (só no app nativo, com a câmera do mapa) ----
+  // Indicador = cursor; pinça rápida = seleciona; pinça e arrasta = move; pinça com as duas mãos = zoom.
+  const nav = { pinching: new Map(), cursor: null, pan: null, zoomDist: 0 };
+  const PINCA_ON = 0.045, PINCA_OFF = 0.07; // histerese: não fica piscando no limite
+  const pontoTela = (lm) => ({ x: (1 - lm.x) * stage.clientWidth, y: lm.y * stage.clientHeight }); // câmera espelhada
+  function moverCursor(p) {
+    const el = $('#map-cursor');
+    if (!el) return;
+    nav.cursor = nav.cursor ? { x: nav.cursor.x * 0.55 + p.x * 0.45, y: nav.cursor.y * 0.55 + p.y * 0.45 } : p;
+    el.hidden = false;
+    el.style.transform = `translate(${nav.cursor.x}px, ${nav.cursor.y}px)`;
+  }
+  /** Devolve true se algum gesto de navegação está acontecendo (aí não testa o de fechar). */
+  function detectNavigate(hands, now) {
+    if (!hands.length) { $('#map-cursor')?.setAttribute('hidden', ''); nav.cursor = null; nav.pinching.clear(); nav.pan = null; return false; }
+    // Estado de pinça por mão (índice da detecção), com histerese.
+    const pincas = hands.map((m, i) => {
+      const d = Math.hypot(m[4].x - m[8].x, m[4].y - m[8].y);
+      const antes = nav.pinching.get(i);
+      const agora = antes ? d < PINCA_OFF : d < PINCA_ON;
+      return agora ? { i, ponto: pontoTela({ x: (m[4].x + m[8].x) / 2, y: (m[4].y + m[8].y) / 2 }) } : null;
+    }).filter(Boolean);
+    const ativos = new Set(pincas.map((p) => p.i));
+    moverCursor(pontoTela(hands[0][8]));
+    $('#map-cursor')?.classList.toggle('pinca', pincas.length > 0);
+
+    if (pincas.length >= 2) {
+      // Zoom: distância entre as duas pinças.
+      const [a, b] = pincas;
+      const d = Math.hypot(a.ponto.x - b.ponto.x, a.ponto.y - b.ponto.y);
+      if (nav.zoomDist) zoomAt(Math.max(0.85, Math.min(1.18, d / nav.zoomDist)), (a.ponto.x + b.ponto.x) / 2, (a.ponto.y + b.ponto.y) / 2);
+      nav.zoomDist = d;
+      nav.pan = null;
+      gestureStatus('Zoom com as duas mãos');
+    } else if (pincas.length === 1) {
+      nav.zoomDist = 0;
+      const p = pincas[0].ponto;
+      if (!nav.pan) nav.pan = { inicio: now, origem: p, ultimo: p, moveu: false };
+      const dx = p.x - nav.pan.ultimo.x, dy = p.y - nav.pan.ultimo.y;
+      if (Math.hypot(p.x - nav.pan.origem.x, p.y - nav.pan.origem.y) > 18) nav.pan.moveu = true;
+      if (nav.pan.moveu) { view.x += dx; view.y += dy; requestFrame(); gestureStatus('Movendo o mapa'); }
+      nav.pan.ultimo = p;
+    } else {
+      // Soltou a pinça: se foi rápida e sem arrastar, é um clique no ponto embaixo do cursor.
+      if (nav.pan && !nav.pan.moveu && now - nav.pan.inicio < 700 && nav.cursor) {
+        const node = hitTest(nav.cursor);
+        if (node) { selectNode(node); gestureStatus(`Selecionado: ${node.label}`); }
+      }
+      nav.pan = null;
+      nav.zoomDist = 0;
+    }
+    nav.pinching = new Map([...ativos].map((i) => [i, true]));
+    return pincas.length > 0;
+  }
+
   function detectClose(hands, now) {
     if (now - view.gesturesReadyAt < 1500) return; // tempo para baixar as mãos depois de abrir
     if (hands.length >= 2) {
@@ -842,7 +898,7 @@ async function mountContextMap() {
             const now = performance.now();
             const detected = view.landmarker.detectForVideo(video, now).landmarks || [];
             video.classList.toggle('ativa', detected.length > 0);
-            if (native) detectClose(detected, now); else detectOpen(detected, now);
+            if (native) { if (!detectNavigate(detected, now)) detectClose(detected, now); } else detectOpen(detected, now);
           } catch (err) { gestureStatus(`Detector: ${err.message}`); }
         }
         if (view.landmarker) view.frame = requestAnimationFrame(loop);
