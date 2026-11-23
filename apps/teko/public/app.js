@@ -833,6 +833,16 @@ async function mountContextMap() {
     return pincas.length > 0;
   }
 
+  /** Volta pra rede inteira ramificada: sem seleção, sem modo vizinhança, todos os tipos, enquadrada. */
+  function resetarRede() {
+    view.selected = null; view.hovered = null;
+    settings.local = false; settings.hidden = [];
+    saveSettings(); syncControls();
+    computeVisible(); updateCount();
+    $('#map-inspector').innerHTML = emptyInspector;
+    fitMap(); kick(0.6);
+  }
+
   function detectClose(hands, now) {
     if (now - view.gesturesReadyAt < 1500) return; // tempo para baixar as mãos depois de abrir
     if (hands.length >= 2) {
@@ -851,8 +861,8 @@ async function mountContextMap() {
         const forte = (v) => Math.hypot(v.x, v.y) > 0.07;
         if (forte(da) && forte(db) && diagonal(da) && diagonal(db) && da.x * db.x + da.y * db.y < 0 && d - antigo.d > 0.1) {
           view.fitAt = now; view.handHist = []; view.togetherSince = 0;
-          fitMap();
-          gestureStatus('Mapa enquadrado');
+          resetarRede();
+          gestureStatus('Rede inteira aberta');
           return;
         }
       }
