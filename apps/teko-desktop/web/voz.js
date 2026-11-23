@@ -369,8 +369,17 @@ async function responder(texto, meu) {
     const resposta = await perguntar(texto, meu);
     if (resposta == null || meu !== ciclo) return;
     mostrar('teko', resposta);
-    await falar(resposta, meu);
-    if (meu === ciclo) mostrar('teko', resposta, 2500);
+    try {
+      await falar(resposta, meu);
+      if (meu === ciclo) mostrar('teko', resposta, 2500);
+    } catch (err) {
+      // A resposta veio; só a voz falhou. Deixa o texto na tela e explica o porquê.
+      const msg = String(err?.message || err);
+      const aviso = /voz clonada fora do ar|4781|ECONNREFUSED/.test(msg)
+        ? 'Sua voz está desligada. Rode: npm run voz:clone'
+        : 'Não consegui falar agora.';
+      if (meu === ciclo) mostrar('teko', `${resposta}\n\n(${aviso})`, 9000);
+    }
   } catch (err) {
     return erro(err, meu);
   }
@@ -440,6 +449,10 @@ async function gerarFala(trecho) {
   return audio().decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
+// Efeito metálico de robô por cima da voz. Desligado: o Teki quer a voz clonada idêntica.
+// Pra ligar: localStorage.setItem('teko.vozMetalica', '1') no console do app.
+const VOZ_METALICA = (() => { try { return localStorage.getItem('teko.vozMetalica') === '1'; } catch { return false; } })();
+
 function tocar(som) {
   const c = audio();
   const fonte = c.createBufferSource();
@@ -448,9 +461,9 @@ function tocar(som) {
   const metal = c.createGain();
   const portadora = c.createOscillator();
   fonte.buffer = som;
-  // Ring modulation em paralelo com a voz seca: timbre claramente sintético, ainda inteligível.
-  seco.gain.value = 0.65;
-  metal.gain.value = 0.35;
+  // Ring modulation em paralelo com a voz seca (só se VOZ_METALICA estiver ligada).
+  seco.gain.value = VOZ_METALICA ? 0.65 : 1;
+  metal.gain.value = VOZ_METALICA ? 0.35 : 0;
   portadora.frequency.value = 42;
   portadora.connect(modulador.gain);
   fonte.connect(seco);
@@ -608,13 +621,20 @@ async function ligarGestos() {
     etapa = 'preparar o runtime visual';
     const files = await vision.FilesetResolver.forVisionTasks(wasmUrl);
     etapa = 'carregar o modelo de mãos';
-    gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, {
-      baseOptions: { modelAssetPath: new URL('./models/hand_landmarker.task', window.location.href).href, delegate: 'CPU' },
+    // GPU deixa o detector fluido e alivia a CPU; se o WebGL falhar, volta pra CPU.
+    const opcoes = (delegate) => ({
+      baseOptions: { modelAssetPath: new URL('./models/hand_landmarker.task', window.location.href).href, delegate },
       runningMode: 'VIDEO', numHands: 2,
       minHandDetectionConfidence: .48, minHandPresenceConfidence: .45, minTrackingConfidence: .45,
     });
+    try {
+      gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, opcoes('GPU'));
+    } catch (err) {
+      console.warn('[Teko] detector na GPU falhou, usando CPU:', err);
+      gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, opcoes('CPU'));
+    }
     if (!gestosSolicitados) return desligarGestos(true);
-    mostrar('teko', 'Gesto T pronto. Forme o T com as mãos e afaste para abrir o mapa.');
+    mostrar('teko', 'Gestos prontos. Junte as mãos abertas e afaste para abrir o mapa.');
     statusGesto('Gestos ligados · mostre as duas mãos');
 
     const animate = async () => {
@@ -638,18 +658,20 @@ async function ligarGestos() {
           const extended = [8, 12, 16, 20].filter((tip, index) => {
             const pip = [6, 10, 14, 18][index];
             return Math.hypot(landmarks[tip].x - wrist.x, landmarks[tip].y - wrist.y) >
-              Math.hypot(landmarks[pip].x - wrist.x, landmarks[pip].y - wrist.y) * 1.12;
+              Math.hypot(landmarks[pip].x - wrist.x, landmarks[pip].y - wrist.y) * 1.05;
           }).length;
-          return extended >= 2;
+          return extended >= 2; // mão aberta (tolera dedos meio dobrados)
         });
         if (hands.length >= 2 && !gestosMapaAberto) {
           const a = hands[0][9], b = hands[1][9];
           const distance = Math.hypot(a.x - b.x, a.y - b.y);
           const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
           const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
-          const formsT = distance < .28 && Math.abs(Math.cos(angleA - angleB)) < .62;
+          // Começo do gesto: mãos abertas próximas (em T ou lado a lado). Depois é só afastar.
+          const emT = distance < .28 && Math.abs(Math.cos(angleA - angleB)) < .62;
+          const formsT = emT || distance < .3;
           const now = performance.now();
-          if (gestosBase != null && now - gestosInicio < 4500 && distance > gestosBase + .1) {
+          if (gestosBase != null && now - gestosInicio < 4500 && distance > gestosBase + .12) {
             aura.formaT(false);
             gestosEmT = false;
             gestosMapaAberto = true;
@@ -664,8 +686,8 @@ async function ligarGestos() {
             }
           } else if (formsT) {
             aura.formaT(true);
-            statusGesto('T reconhecido · afaste as mãos');
-            if (!gestosEmT) mostrar('teko', 'T reconhecido. Afaste as mãos para abrir a rede.', 1800);
+            statusGesto('Mãos juntas · agora afaste para abrir o mapa');
+            if (!gestosEmT) mostrar('teko', 'Agora afaste as mãos para abrir o mapa.', 1800);
             gestosEmT = true;
             if (gestosBase == null || now - gestosInicio >= 4500) {
               gestosBase = distance;
@@ -675,11 +697,11 @@ async function ligarGestos() {
             gestosBase = null;
             aura.formaT(false);
             gestosEmT = false;
-            statusGesto('Aproxime as mãos e forme um T');
+            statusGesto('Junte as mãos abertas e depois afaste');
           } else {
             aura.formaT(false);
             gestosEmT = false;
-            statusGesto('Aproxime as mãos e forme um T');
+            statusGesto('Junte as mãos abertas e depois afaste');
           }
         } else if (hands.length < 2) {
           gestosBase = null;
