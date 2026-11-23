@@ -86,6 +86,7 @@ let gestosBase = null;
 let gestosInicio = 0;
 let gestosMapaAberto = false;
 let gestosEmT = false;
+let tDesde = 0; // quando o T começou a aparecer (precisa ficar firme um instante)
 let statusGestoAtual = '';
 
 function statusGesto(texto) {
@@ -975,7 +976,9 @@ async function ligarGestosAgora() {
         }
         const result = gestosLandmarker.detectForVideo(video, timestamp);
         const detectedHands = result.landmarks || [];
-        const janelaAberta = detectedHands.length >= 2;
+        // A janelinha da câmera só aparece com um gesto em andamento (T, descolar ou pinça),
+        // não só porque as duas mãos entraram na imagem.
+        const janelaAberta = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500) || Boolean(pegada);
         preview?.classList.toggle('ativa', janelaAberta);
         aura.janelaCamera(janelaAberta);
         // Pinça (polegar encostando no indicador) confirma uma aprovação pendente.
@@ -1021,14 +1024,22 @@ async function ligarGestosAgora() {
         }
         if (gestosMapaAberto) {
           // já abriu neste quadro
-        } else if (hands.length >= 2) {
-          const a = hands[0][9], b = hands[1][9];
+        } else if (detectedHands.length >= 2 && hands.length >= 1) {
+          // T tolerante: basta uma mão aberta (a outra pode estar meio fechada).
+          const [m1, m2] = detectedHands;
+          const a = m1[9], b = m2[9];
           const distance = Math.hypot(a.x - b.x, a.y - b.y);
-          const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
-          const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
-          // Só o T começa o gesto: mãos próximas e cruzadas. Tolerante: a partir de ~37° entre
-          // as mãos já conta (um T perfeito é 90°), mas mãos lado a lado (paralelas) não.
-          const formsT = distance < .3 && Math.abs(Math.cos(angleA - angleB)) < .8;
+          const angleA = Math.atan2(m1[9].y - m1[0].y, m1[9].x - m1[0].x);
+          const angleB = Math.atan2(m2[9].y - m2[0].y, m2[9].x - m2[0].x);
+          // Cruzadas: a partir de ~30° entre as mãos já conta (um T perfeito é 90°);
+          // lado a lado (paralelas) não.
+          const cruzadas = Math.abs(Math.cos(angleA - angleB)) < .87;
+          // Encostando: ponta de algum dedo de uma mão perto da palma da outra.
+          const encosta = (p, q) => Math.min(...[4, 8, 12, 16, 20].flatMap((t) => [0, 5, 9, 13, 17].map((k) => Math.hypot(p[t].x - q[k].x, p[t].y - q[k].y))));
+          const juntas = distance < .33 || Math.min(encosta(m1, m2), encosta(m2, m1)) < .1;
+          // Firme por 0,2 s antes de valer: mão passando na frente da câmera não arma o T.
+          if (cruzadas && juntas) tDesde = tDesde || now; else tDesde = 0;
+          const formsT = cruzadas && juntas && now - tDesde >= 200;
           if (formsT) {
             aura.formaT(true);
             statusGesto('T reconhecido · agora descole as mãos');
@@ -1048,9 +1059,10 @@ async function ligarGestosAgora() {
           gestosInicio = 0;
           aura.formaT(false);
           gestosEmT = false;
+          tDesde = 0;
           statusGesto(detectedHands.length < 2
             ? 'Mostre as duas mãos para a câmera'
-            : 'Abra os dedos das duas mãos');
+            : 'Abra os dedos de uma das mãos');
         }
       } catch (err) {
         console.error('[Teko] erro no detector de gestos:', err);
