@@ -40,6 +40,58 @@ async fn voice_local_request(action: String, body: Vec<u8>) -> Result<Vec<u8>, S
     Ok(bytes.to_vec())
 }
 
+/// Chat em streaming: repassa cada evento SSE do Teko pro app assim que chega.
+/// Assim o app vê pedidos de aprovação no meio da resposta e pode perguntar "posso?".
+#[tauri::command]
+async fn chat_stream(body: Vec<u8>, on_event: tauri::ipc::Channel<String>) -> Result<(), String> {
+    let mut response = reqwest::Client::new()
+        .post("http://127.0.0.1:4780/api/chat")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .timeout(std::time::Duration::from_secs(30 * 60))
+        .body(body)
+        .send()
+        .await
+        .map_err(|err| format!("não consegui conectar ao Teko em 127.0.0.1:4780: {err}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let texto = response.text().await.unwrap_or_default();
+        return Err(format!("Teko respondeu HTTP {status}: {texto}"));
+    }
+    let mut buffer = String::new();
+    while let Some(chunk) = response.chunk().await.map_err(|err| format!("resposta do Teko incompleta: {err}"))? {
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(fim) = buffer.find("\n\n") {
+            let evento: String = buffer.drain(..fim + 2).collect();
+            for linha in evento.lines() {
+                if let Some(dado) = linha.strip_prefix("data:") {
+                    let _ = on_event.send(dado.trim().to_string());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Aprova ou nega uma ferramenta pendente (o Teko espera essa resposta pra seguir).
+#[tauri::command]
+async fn approve_tool(id: String, approved: bool) -> Result<(), String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err("id de aprovação inválido".into());
+    }
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:4780/api/approvals/{id}"))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .body(format!("{{\"approved\":{approved}}}"))
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Teko respondeu HTTP {}", response.status()));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn open_context_map(app: tauri::AppHandle) -> Result<(), String> {
     let _ = app.emit("mapa-aberto", ());
@@ -133,7 +185,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {

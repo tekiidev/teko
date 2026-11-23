@@ -9,6 +9,8 @@
     "core:event:default",
     "allow-voice-local-request",
     "allow-open-context-map",
-    "allow-definir-esc"
+    "allow-definir-esc",
+    "allow-chat-stream",
+    "allow-approve-tool"
   ]
 }
