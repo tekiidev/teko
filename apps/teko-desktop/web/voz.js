@@ -1003,9 +1003,8 @@ async function ligarGestosAgora() {
         }
         const result = gestosLandmarker.detectForVideo(video, timestamp);
         const detectedHands = result.landmarks || [];
-        // A janelinha da câmera só aparece com um gesto em andamento (T, descolar ou pinça),
-        // não só porque as duas mãos entraram na imagem.
-        const janelaAberta = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500) || Boolean(pegada);
+        // A janelinha da câmera aparece com as duas mãos na imagem (ou segurando a aura na pinça).
+        const janelaAberta = detectedHands.length >= 2 || Boolean(pegada);
         preview?.classList.toggle('ativa', janelaAberta);
         aura.janelaCamera(janelaAberta);
         // Pinça (polegar encostando no indicador) confirma uma aprovação pendente.
@@ -1053,7 +1052,8 @@ async function ligarGestosAgora() {
         // fechem ou que o detector perca uma mão por um instante.
         if (emJanela && !gestosMapaAberto && detectedHands.length >= 2) {
           const d = Math.hypot(detectedHands[0][9].x - detectedHands[1][9].x, detectedHands[0][9].y - detectedHands[1][9].y);
-          if (d > gestosBase + .05) await abrirMapa();
+          // Afastar de verdade (~9% da imagem), não só um tremor das mãos depois do T.
+          if (d > gestosBase + .09) await abrirMapa();
         }
         if (gestosMapaAberto) {
           // já abriu neste quadro
@@ -1070,9 +1070,10 @@ async function ligarGestosAgora() {
           // Encostando: ponta de algum dedo de uma mão perto da palma da outra.
           const encosta = (p, q) => Math.min(...[4, 8, 12, 16, 20].flatMap((t) => [0, 5, 9, 13, 17].map((k) => Math.hypot(p[t].x - q[k].x, p[t].y - q[k].y))));
           const juntas = distance < .33 || Math.min(encosta(m1, m2), encosta(m2, m1)) < .1;
-          // Firme por 0,2 s antes de valer: mão passando na frente da câmera não arma o T.
+          // Mão passando na frente da câmera não arma o T.
           if (cruzadas && juntas) tDesde = tDesde || now; else tDesde = 0;
-          const formsT = cruzadas && juntas && now - tDesde >= 200;
+          // Firme por 0,35 s: o mapa só abre de propósito.
+          const formsT = cruzadas && juntas && now - tDesde >= 350;
           if (formsT) {
             aura.formaT(true);
             statusGesto('T reconhecido · agora descole as mãos');
