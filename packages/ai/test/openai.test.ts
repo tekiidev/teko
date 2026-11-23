@@ -30,3 +30,12 @@ test('DeepSeek: lê prompt_cache_hit_tokens', async () => {
   const r = await run({ prompt_tokens: 1000, completion_tokens: 10, prompt_cache_hit_tokens: 640 });
   assert.equal(r.cachedInputTokens, 640);
 });
+
+test('modelos novos da OpenAI usam max_completion_tokens; compatíveis seguem com max_tokens', async () => {
+  const { tokenLimitParam } = await import('../src/providers/openai.ts');
+  assert.equal(tokenLimitParam('gpt-5.4-nano', 'https://api.openai.com/v1'), 'max_completion_tokens');
+  assert.equal(tokenLimitParam('gpt-4.1-mini', 'https://api.openai.com/v1'), 'max_completion_tokens');
+  assert.equal(tokenLimitParam('gpt-6-luna', 'https://openrouter.ai/api/v1'), 'max_completion_tokens');
+  assert.equal(tokenLimitParam('deepseek-chat', 'https://api.deepseek.com/v1'), 'max_tokens');
+  assert.equal(tokenLimitParam('qwen3:8b', 'http://localhost:11434/v1'), 'max_tokens');
+});

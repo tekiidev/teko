@@ -87,6 +87,9 @@ export const MODELS = [
   { id: 'anthropic/claude-haiku-4-5', provider: 'anthropic', model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', ctx: 200000, priceIn: 1, priceOut: 5, tags: ['bug', 'docs'] },
 
   // OpenAI
+  // Rápidos e baratos (reserva do GPT-6 Luna na voz). Preços estimados.
+  { id: 'openai/gpt-5.4-nano', provider: 'openai', model: 'gpt-5.4-nano', label: 'GPT-5.4 nano', ctx: 400000, priceIn: 0.05, priceOut: 0.4, tags: ['docs', 'bug', 'economic'] },
+  { id: 'openai/gpt-4.1-mini', provider: 'openai', model: 'gpt-4.1-mini', label: 'GPT-4.1 mini', ctx: 1000000, priceIn: 0.4, priceOut: 1.6, tags: ['docs', 'bug', 'economic'] },
   { id: 'openai/gpt-6-luna', provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', ctx: 1050000, priceIn: 0.1, priceOut: 0.5, tags: ['code', 'docs', 'bug', 'economic'] },
   { id: 'openai/gpt-5.1-codex', provider: 'openai', model: 'gpt-5.1-codex', label: 'GPT-5.1 Codex', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['code', 'review', 'bug'] },
   { id: 'openai/gpt-5.1', provider: 'openai', model: 'gpt-5.1', label: 'GPT-5.1', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['plan', 'docs', 'review'] },
@@ -138,6 +141,9 @@ export const MODEL_UPGRADES: Record<string, string> = {
  */
 export const CHAIN_ADDITIONS: { id: string; profile: string; model: string; before: string[] }[] = [
   // Flash Lite antes do Flash: responde rápido e o Flash vive sobrecarregado no plano grátis.
+  // Voz: modelos rápidos da OpenAI na frente (quem tem a chave responde mais rápido).
+  { id: 'voice-gpt-5-4-nano', profile: 'voice', model: 'openai/gpt-5.4-nano', before: ['google/gemini-flash-lite-latest', 'anthropic/claude-haiku-5-5'] },
+  { id: 'voice-gpt-4-1-mini', profile: 'voice', model: 'openai/gpt-4.1-mini', before: ['google/gemini-flash-lite-latest', 'anthropic/claude-haiku-5-5'] },
   { id: 'code-gemini-flash-lite', profile: 'code', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'bug-gemini-flash-lite', profile: 'bug', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'terse-gemini-flash-lite', profile: 'terse', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest'] },
@@ -225,9 +231,11 @@ export const PROFILES = [
     description: 'Conversa falada: respostas curtas, faladas, sem formatação.',
     systemPrompt: `${BASE_SYSTEM} Modo: voz. A resposta vai ser lida em voz alta. Fale como numa conversa: 1 a 3 frases curtas, em português do Brasil, sem markdown, sem listas, sem emoji e sem código. Se precisar de código ou de muitos detalhes, diga em uma frase e sugira abrir o painel ou o terminal. Não termine com pergunta de cortesia (tipo "mais alguma dúvida?").`,
     chain: [
+      'openai/gpt-6-luna', // sem raciocínio: ~0,6 s pra primeira palavra no teste
+      'openai/gpt-5.4-nano',
+      'openai/gpt-4.1-mini',
       'google/gemini-flash-lite-latest',
       'anthropic/claude-haiku-5-5',
-      'openai/gpt-6-luna',
       'deepseek/deepseek-chat',
       'google/gemini-flash-latest',
       'ollama/qwen3:8b',
