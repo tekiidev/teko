@@ -28,7 +28,7 @@ let zerarVolume = 0;
 
 function tamanho() {
   const base = notch.tem ? notch.largura : 160;
-  if (aberta) return { w: Math.max(LARGURA_PAINEL, base + 40), h: notch.altura + 142 };
+  if (aberta) return { w: Math.max(LARGURA_PAINEL, base + 40), h: notch.altura + 142 + Math.min(40, document.getElementById('origens').scrollHeight) };
   if (estado !== 'parado' || temLegenda) {
     const extra = temLegenda ? Math.min(110, legenda.scrollHeight + 2) : 0;
     return { w: Math.max(base + 100, LARGURA_ATIVA), h: notch.altura + extra };
@@ -72,8 +72,19 @@ async function gastoHoje() {
     const u = JSON.parse(await invoke('ilha_uso'));
     const custo = Number(u?.today?.cost || 0);
     const poupado = Number(u?.today?.saved || 0);
-    const fmt = (n) => (n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
+    const fmt = (n) => (n === 0 ? '$0' : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
     document.getElementById('gasto').textContent = poupado > 0 ? `${fmt(custo)} · poupou ${fmt(poupado)}` : fmt(custo);
+    // De onde veio: até 3 origens, a maior primeiro; estimativa marcada com ~.
+    const origens = document.getElementById('origens');
+    origens.textContent = '';
+    for (const o of (u?.todayBySource || []).slice(0, 3)) {
+      const item = document.createElement('span');
+      item.textContent = `${o.origem} ${o.estimado ? '~' : ''}${fmt(o.custo)}`;
+      if (o.estimado) item.title = 'Estimativa do Claude Code; com assinatura Claude não sai crédito de API';
+      origens.append(item);
+    }
+    if (!origens.childElementCount) origens.textContent = 'nada pago hoje (local, cache ou plano grátis)';
+    redesenhar();
   } catch {
     document.getElementById('gasto').textContent = 'servidor fora do ar (npm start)';
   }

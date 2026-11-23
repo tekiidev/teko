@@ -72,6 +72,29 @@ export function tokensSince(since, modelId) {
   return row.n;
 }
 
+/**
+ * De onde veio o gasto desde `since`: tarefa delegada ao Claude Code, revisão e cada
+ * provedor. O custo do Claude Code é a estimativa dele (com assinatura, não sai crédito de API).
+ */
+export function gastoPorOrigem(since: Date) {
+  const rows = db.prepare(
+    `SELECT u.kind, u.provider_id, COALESCE(p.label, u.provider_id) AS label,
+            COALESCE(SUM(u.cost),0) AS cost, COUNT(*) AS n
+       FROM usage_events u LEFT JOIN providers p ON p.id = u.provider_id
+      WHERE u.ts >= ?
+      GROUP BY u.kind, u.provider_id`,
+  ).all(since.toISOString());
+  const origens = new Map<string, { origem: string; custo: number; chamadas: number; estimado: boolean }>();
+  for (const r of rows) {
+    const origem = r.kind === 'agent' ? 'Claude Code (tarefa delegada)' : r.kind === 'review' ? `Revisão · ${r.label}` : r.label;
+    const atual = origens.get(origem) || { origem, custo: 0, chamadas: 0, estimado: r.kind === 'agent' };
+    atual.custo += r.cost;
+    atual.chamadas += r.n;
+    origens.set(origem, atual);
+  }
+  return [...origens.values()].filter((o) => o.custo > 0).sort((a, b) => b.custo - a.custo);
+}
+
 export function usageSummary({ sessionId = null } = {}) {
   const out: any = {
     session: emptyTotals(),
@@ -81,6 +104,7 @@ export function usageSummary({ sessionId = null } = {}) {
     total: sumUsage({}),
   };
   if (sessionId) out.session = sumUsage({ sessionId });
+  out.todayBySource = gastoPorOrigem(windowStart('today'));
 
   out.byModelWeek = db
     .prepare(

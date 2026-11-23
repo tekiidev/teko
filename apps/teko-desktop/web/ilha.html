@@ -114,6 +114,9 @@
     .rodape { display: flex; justify-content: center; gap: 6px; align-items: center; color: var(--apagado); font-size: 10.5px; font-variant-numeric: tabular-nums; }
     .rodape svg { width: 11px; height: 11px; }
     .rodape b { color: var(--gelo); font-weight: 500; }
+    .origens { margin-top: -6px; text-align: center; color: var(--apagado); font-size: 10px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    .origens span { white-space: nowrap; }
+    .origens span + span::before { content: ' · '; }
 
     @media (prefers-reduced-motion: reduce) {
       #ilha, #legenda, .barras i { transition: none; }
@@ -160,7 +163,8 @@
         <input id="pedido" type="text" placeholder="Peça algo ao Teko" autocomplete="off" spellcheck="false" />
         <button id="enviar" type="button" aria-label="Enviar"><svg><use href="#i-enviar"/></svg></button>
       </div>
-      <div class="rodape" title="Gasto de hoje e quanto o Teko poupou"><svg><use href="#i-moeda"/></svg><b id="gasto">…</b></div>
+      <div class="rodape"><svg><use href="#i-moeda"/></svg><span>Gasto hoje</span><b id="gasto">…</b></div>
+      <div class="origens" id="origens"></div>
     </div>
   </div>
   <script type="module" src="ilha.js"></script>
