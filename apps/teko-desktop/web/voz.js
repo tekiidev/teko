@@ -12,7 +12,7 @@
 
 import { criarAura } from './aura.js';
 import { criarDetectorEstalo } from './estalo.js';
-import { comandoLocal } from './comandos.js';
+import { comandoLocal, comandoComChamadoParecido } from './comandos.js';
 
 const API = 'http://127.0.0.1:4780/api';
 const ROTAS_VOZ = {
@@ -329,6 +329,15 @@ async function conferirTeko(wav) {
     const { wake, rest, text } = JSON.parse(new TextDecoder().decode(bytes));
     ouvido = text || '';
     if (!wake) {
+      // "Teko" mal ouvido ("Deco, farmar aura"): se o resto é um comando conhecido, vale.
+      const comando = comandoComChamadoParecido(text);
+      if (comando) {
+        ciclo += 1;
+        bipe();
+        mostrar('você', text);
+        await executarComando(comando, ciclo);
+        return;
+      }
       if (text) mostrar('não reconheci', `“${text}”`, 1800);
       return;
     }
