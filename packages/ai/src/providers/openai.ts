@@ -14,6 +14,15 @@ function parseArgs(text) {
  * Adapter para qualquer endpoint compatível com OpenAI Chat Completions:
  * OpenAI, DeepSeek, Qwen/DashScope, GLM, Kimi, xAI, OpenRouter, Ollama.
  */
+/**
+ * A OpenAI trocou max_tokens por max_completion_tokens; os modelos novos (gpt-5*, gpt-6*, o*)
+ * recusam max_tokens. Os compatíveis (DeepSeek, Ollama, OpenRouter...) seguem com max_tokens.
+ */
+export function tokenLimitParam(model: string, baseUrl = '') {
+  if (/api\.openai\.com/.test(baseUrl) || /^(gpt-5|gpt-6|o\d)/.test(model)) return 'max_completion_tokens';
+  return 'max_tokens';
+}
+
 export async function openaiCompatible({
   model,
   system,
@@ -31,7 +40,7 @@ export async function openaiCompatible({
 
   const baseBody: Record<string, any> = { model, messages: chatMessages, stream: true };
   if (model === 'gpt-6-luna') baseBody.reasoning_effort = 'none';
-  if (maxTokens) baseBody.max_tokens = maxTokens;
+  if (maxTokens) baseBody[tokenLimitParam(model, baseUrl)] = maxTokens;
   if (tools?.length) baseBody.tools = toolSchemas(tools).openai;
 
   const headers = {
