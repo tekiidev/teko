@@ -120,8 +120,8 @@ export async function* runTurn({
 
   const project = session.project_id ? db.prepare('SELECT * FROM projects WHERE id = ?').get(session.project_id) : null;
   const projectPath = project?.path && fs.existsSync(project.path) ? project.path : null;
-  // Na voz ainda não dá pra aprovar no meio da conversa (issue #62): só ferramentas de leitura.
-  const tools = projectPath ? toolDefs({ readOnly: profileId === 'voice' }) : null;
+  // Todas as ferramentas; as que alteram algo pedem aprovação (no app de voz: falando "sim" ou com pinça).
+  const tools = projectPath ? toolDefs() : null;
 
   let retrieved = '';
   if (project?.id) {

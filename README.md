@@ -229,7 +229,7 @@ O Teko não tenta programar melhor que um agente de código: ele **delega**. Com
 - Precisa do Claude Code instalado (`claude` no PATH ou `CLAUDE_BIN`)
 - Num teste, corrigir um bug de uma linha custou ~US$ 0,19 e levou ~11 s
 - Trocar de projeto falando ou escrevendo: "Teko, trabalha no projeto Cofu", "sai do projeto" (resolvido localmente, sem gastar IA)
-- Na voz, por enquanto, só ferramentas de leitura: a aprovação falada ou por gesto vem a seguir
+- Na voz: o Teko pergunta "Posso mandar pro Claude Code: …?" e você responde **"sim"/"pode"** ou **"não"**, ou faz **pinça** (polegar no indicador) pra confirmar. Sem resposta clara, ele nega. **Esc** cancela
 
 ## Busca local
 

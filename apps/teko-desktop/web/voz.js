@@ -301,6 +301,7 @@ function definirEsc(ligado) {
 function cancelarConversa() {
   if (modo !== 'gravando' && modo !== 'ocupado') return definirEsc(false);
   ciclo += 1; // respostas e falas em andamento deste ciclo são ignoradas
+  if (aprovacao) aprovacao.responder(false); // nega a ferramenta que esperava resposta
   pararFala();
   gravacao = null;
   trecho = null;
@@ -311,10 +312,11 @@ function cancelarConversa() {
   ajustarMic().then(() => mostrar('teko', 'Conversa cancelada. Diga “Teko” quando precisar.', 2500));
 }
 
-function comecarGravacao({ auto, seguimento = false }) {
+function comecarGravacao({ auto, seguimento = false, aoTerminar = null }) {
   definirEsc(true);
   pararFala();
-  gravacao = { pedacos: [], inicio: performance.now(), auto, seguimento, falou: false, silencio: 0 };
+  // aoTerminar: em vez de virar pergunta pro Teko, o texto volta pra quem pediu (ex.: "sim/não").
+  gravacao = { pedacos: [], inicio: performance.now(), auto, seguimento, aoTerminar, falou: false, silencio: 0 };
   modo = 'gravando';
   ativo = micAnalisador;
   aura.estado = 'ouvindo';
@@ -340,6 +342,13 @@ function gravarQuadro(quadro, v) {
 }
 
 function cancelarGravacao(aviso = '') {
+  if (gravacao?.aoTerminar) {
+    const volta = gravacao.aoTerminar;
+    gravacao = null;
+    ativo = null;
+    modo = 'ocupado';
+    return volta(null);
+  }
   definirEsc(false);
   gravacao = null;
   ativo = null;
@@ -359,6 +368,18 @@ async function terminarGravacao() {
   const g = gravacao;
   gravacao = null;
   ativo = null;
+  if (g?.aoTerminar) {
+    // Resposta curta (sim/não): transcreve e devolve, sem abrir um ciclo novo.
+    modo = 'ocupado';
+    aura.estado = 'pensando';
+    try {
+      const bytes = await requisicaoLocal('transcribe', paraWav(g.pedacos, taxa), 'audio/wav');
+      const { text } = JSON.parse(new TextDecoder().decode(bytes));
+      return g.aoTerminar(text || null);
+    } catch {
+      return g.aoTerminar(null);
+    }
+  }
   if (!g || performance.now() - g.inicio < 350) return cancelarGravacao();
   const meu = ++ciclo;
   modo = 'ocupado';
@@ -434,7 +455,91 @@ function erro(err, meu) {
   fim(meu);
 }
 
+// ---------- aprovação por voz ou gesto ----------
+// Quando o Teko quer escrever, editar, rodar algo ou delegar pro Claude Code, ele pergunta.
+// Responda "sim"/"pode" ou "não", ou faça pinça (polegar + indicador) pra confirmar.
+let aprovacao = null; // { id, responder(bool) }
+
+const SIM = /^(sim|pode|pode sim|manda|manda ver|bora|claro|ok|okay|beleza|isso|faz|faça|confirmo|confirma|vai)\b/i;
+const NAO = /^(não|nao|nem|cancela|cancelar|para|pare|deixa|espera)\b/i;
+
+function perguntaDe(ev) {
+  const a = ev.args || {};
+  const curto = (t, n = 90) => { const x = String(t || '').replace(/\s+/g, ' ').trim(); return x.length > n ? `${x.slice(0, n)}…` : x; };
+  if (ev.name === 'delegate_agent') return `Posso mandar pro Claude Code: ${curto(a.task)}?`;
+  if (ev.name === 'write_file') return `Posso criar o arquivo ${a.path}?`;
+  if (ev.name === 'edit_file') return `Posso editar ${a.path}?`;
+  if (ev.name === 'run_command') return `Posso rodar o comando ${curto(a.command, 60)}?`;
+  return `Posso usar ${ev.name}?`;
+}
+
+async function ouvirSimNao(meu) {
+  if (meu !== ciclo || !(await abrirMic())) return null;
+  return new Promise((resolve) => comecarGravacao({ auto: true, aoTerminar: (texto) => resolve(texto) }));
+}
+
+async function pedirAprovacao(ev, meu) {
+  const pergunta = perguntaDe(ev);
+  return new Promise(async (resolve) => {
+    let resolvido = false;
+    const responder = (ok) => {
+      if (resolvido) return;
+      resolvido = true;
+      aprovacao = null;
+      resolve(ok);
+    };
+    aprovacao = { id: ev.id, responder };
+    mostrar('teko', `${pergunta}\n(diga sim ou não · pinça confirma)`);
+    try { await falar(pergunta, meu); } catch { /* sem voz: a pergunta fica escrita */ }
+    if (resolvido || meu !== ciclo) return responder(false);
+    // Até 2 tentativas de ouvir; sem resposta clara, nega (mais seguro).
+    for (let tentativa = 0; tentativa < 2 && !resolvido; tentativa += 1) {
+      const texto = await ouvirSimNao(meu);
+      if (resolvido) return;
+      const t = String(texto || '').trim();
+      if (SIM.test(t)) return responder(true);
+      if (NAO.test(t)) return responder(false);
+      if (tentativa === 0) mostrar('teko', `${pergunta}\n(não entendi: diga sim ou não)`);
+    }
+    responder(false);
+  });
+}
+
+/** Chat em streaming (app nativo): vê pedidos de aprovação no meio da resposta. */
+async function perguntarStream(texto, meu) {
+  const { invoke, Channel } = window.__TAURI__.core;
+  let resposta = '';
+  let falha = null;
+  let fila = Promise.resolve();
+  const canal = new Channel();
+  const tratar = async (dado) => {
+    if (meu !== ciclo) return;
+    let ev;
+    try { ev = JSON.parse(dado); } catch { return; }
+    if (ev.type === 'meta') sessionId = ev.sessionId;
+    else if (ev.type === 'delta') resposta += ev.text;
+    else if (ev.type === 'done' && typeof ev.text === 'string') resposta = ev.text;
+    else if (ev.type === 'error') falha = ev.message;
+    else if (ev.type === 'tool_call' && ev.requiresApproval) {
+      const ok = await pedirAprovacao(ev, meu);
+      await invoke('approve_tool', { id: ev.id, approved: ok }).catch((err) => console.warn('[Teko] aprovação:', err));
+      mostrar('teko', ok ? 'Fechado, fazendo.' : 'Beleza, não vou fazer.', 2500);
+      if (meu === ciclo) aura.estado = 'pensando';
+    } else if (ev.type === 'tool_running' && ev.name === 'delegate_agent') {
+      mostrar('teko', 'Mandei pro Claude Code. Te aviso quando terminar.');
+    }
+  };
+  canal.onmessage = (dado) => { fila = fila.then(() => tratar(dado)); };
+  const corpo = new TextEncoder().encode(JSON.stringify({ text: texto, sessionId, profileId: 'voice' }));
+  await invoke('chat_stream', { body: Array.from(corpo), onEvent: canal });
+  await fila;
+  if (meu !== ciclo) return null;
+  if (!resposta && falha) throw new Error(falha);
+  return resposta;
+}
+
 async function perguntar(texto, meu) {
+  if (window.__TAURI__?.core?.Channel) return perguntarStream(texto, meu);
   const bytes = await requisicaoLocal('chat', { text: texto, sessionId, profileId: 'voice' }, 'application/json');
   const corpo = new TextDecoder().decode(bytes);
   let buffer = corpo;
@@ -698,6 +803,10 @@ async function ligarGestos() {
         const janelaAberta = detectedHands.length >= 2;
         preview?.classList.toggle('ativa', janelaAberta);
         aura.janelaCamera(janelaAberta);
+        // Pinça (polegar encostando no indicador) confirma uma aprovação pendente.
+        if (aprovacao && detectedHands.some((m) => Math.hypot(m[4].x - m[8].x, m[4].y - m[8].y) < 0.045)) {
+          aprovacao.responder(true);
+        }
         const hands = detectedHands.filter((landmarks) => {
           const wrist = landmarks[0];
           const extended = [8, 12, 16, 20].filter((tip, index) => {
