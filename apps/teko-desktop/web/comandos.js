@@ -29,6 +29,12 @@ const COMANDOS = [
     regra: /\bbro(ch|x)\w*|\b(deslig|escond|desativ|tira)\w* (a )?(aura|aurea)\b/,
   },
   {
+    acao: 'mic-desligar',
+    fala: 'Microfone desligado.',
+    // desligar/desativar/mutar o microfone (ligar de novo só na ilha ou no menu)
+    regra: /\b(deslig|desativ|mut|fech)\w* (o )?(microfone|mic)\b/,
+  },
+  {
     acao: 'gestos-desligar',
     fala: 'Gestos desligados.',
     // desativar/desligar/parar os gestos

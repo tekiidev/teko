@@ -75,6 +75,9 @@ let falaAnalisador = null;
 let ativo = null; // analisador que a aura está lendo
 let mic = null; // { stream, fonte, processador }
 let escuta = true; // ouvir "Teko" (menu da barra)
+// Interruptor geral do microfone: desligado, nada abre o microfone (nem ⌥ Espaço).
+let micLigado = true;
+try { micLigado = localStorage.getItem('teko.mic') !== '0'; } catch { /* padrão: ligado */ }
 let modo = 'parado'; // parado | vigia | gravando | ocupado
 let gravacao = null; // { pedacos, inicio, auto, falou, silencio }
 let trecho = null; // trecho da vigia em andamento
@@ -201,6 +204,10 @@ function bipe() {
 // ---------- microfone ----------
 
 async function abrirMic() {
+  if (!micLigado) {
+    mostrar('teko', 'Microfone desligado. Ligue na ilha ou no menu da barra.', 3000);
+    return false;
+  }
   const c = audio();
   try {
     if (!mic) {
@@ -236,7 +243,7 @@ function fecharMic() {
 // Com a escuta ligada o microfone fica aberto (o macOS mostra o ponto laranja), mas o áudio
 // só é usado na vigia ou gravando; enquanto o Teko pensa e fala, os quadros são ignorados.
 async function ajustarMic() {
-  if (modo === 'gravando' || escuta) {
+  if (micLigado && (modo === 'gravando' || escuta)) {
     if (await abrirMic()) {
       if (modo === 'parado' && escuta) modo = 'vigia';
       if (modo === 'vigia') {
@@ -247,11 +254,27 @@ async function ajustarMic() {
     }
   } else {
     fecharMic();
+    if (modo === 'vigia') modo = 'parado';
     if (modo === 'parado') {
       ativo = null;
       aura.estado = 'parado';
     }
   }
+}
+
+/** Liga ou desliga o microfone de vez (ilha, menu ou "Teko, desligar microfone"). */
+function definirMic(ligado) {
+  micLigado = ligado;
+  try { localStorage.setItem('teko.mic', ligado ? '1' : '0'); } catch { /* só não lembra */ }
+  if (!ligado) {
+    if (modo === 'gravando' || modo === 'ocupado') cancelarConversa();
+    trecho = null;
+    anteriores = [];
+    fecharMic(); // fecha de verdade: o ponto laranja do macOS some
+  }
+  ajustarMic();
+  avisarIlha('teko-mic', ligado);
+  mostrar('teko', ligado ? 'Microfone ligado.' : 'Microfone desligado. Nada é ouvido até você ligar de novo.', 2500);
 }
 
 function aoQuadro(quadro) {
@@ -500,6 +523,12 @@ async function executarComando(cmd, meu) {
     else if (cmd.acao === 'aura-desligar') await invoke?.('definir_aura', { visivel: false });
     else if (cmd.acao === 'gestos-ligar') await invoke?.('definir_gestos', { ativo: true });
     else if (cmd.acao === 'gestos-desligar') await invoke?.('definir_gestos', { ativo: false });
+    else if (cmd.acao === 'mic-desligar') {
+      // Fala antes: depois de desligar, nada mais é ouvido.
+      await dizer();
+      await invoke?.('definir_microfone', { ligado: false });
+      return;
+    }
     await dizer();
   } catch (err) {
     mostrar('erro', `Não consegui: ${err?.message || err}`, 4000);
@@ -1271,6 +1300,9 @@ if (window.__TAURI__) {
   const { listen } = window.__TAURI__.event;
   listen('falar', ({ payload }) => (payload ? apertou() : soltou()));
   listen('escuta', ({ payload }) => mudarEscuta(Boolean(payload)));
+  listen('microfone', ({ payload }) => definirMic(Boolean(payload)));
+  // Sincroniza o menu da barra com o que ficou salvo da última vez.
+  window.__TAURI__.core.invoke('definir_microfone', { ligado: micLigado }).catch(() => {});
   listen('estalo', ({ payload }) => {
     estaloLigado = Boolean(payload);
     detectorEstalo?.reset();
@@ -1306,6 +1338,7 @@ if (window.__TAURI__) {
     avisarIlha('teko-escuta', escuta);
     avisarIlha('teko-estado', aura.estado);
     avisarIlha('aura-visivel', auraLigada);
+    avisarIlha('teko-mic', micLigado);
   });
   // Ilha do notch: botão Falar (ouve até você parar) e pedido digitado (mesmo fluxo da voz).
   listen('ilha-falar', async () => {

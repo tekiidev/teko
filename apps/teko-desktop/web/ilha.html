@@ -107,6 +107,11 @@
     .botao:active { transform: scale(.92); }
     /* Aura ligada: botão aceso. */
     #aura.ligado { color: var(--ciano); border-color: rgba(95, 212, 255, .55); box-shadow: 0 0 10px rgba(46, 155, 255, .35) inset; }
+    /* Microfone: aceso quando ligado; desligado fica vermelho e riscado, e Falar apaga. */
+    #microfone .off, #microfone.ligado .on { display: block; }
+    #microfone .on, #microfone.ligado .off { display: none; }
+    #microfone:not(.ligado) { color: #ff5f6d; border-color: rgba(255, 95, 109, .55); background: rgba(255, 95, 109, .1); }
+    #ilha.mic-off #falar { opacity: .35; pointer-events: none; }
     .botao.principal { background: var(--azul); border-color: var(--azul); color: #00101f; }
     .botao.principal:hover { background: var(--ciano); border-color: var(--ciano); }
     .campo { position: relative; }
@@ -143,6 +148,7 @@
       <symbol id="i-mapa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M8 6.6l7.8.4M7.2 8l3.8 8M16.9 9l-3.8 7"/></symbol>
       <symbol id="i-aura" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="2.4" fill="currentColor"/><circle cx="12" cy="12" r="6"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2"/></symbol>
       <symbol id="i-t" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 6h14M12 6v13"/></symbol>
+      <symbol id="i-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10.5V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.2 5.6M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/></symbol>
       <symbol id="i-parar" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2.2"/></symbol>
       <symbol id="i-enviar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
       <symbol id="i-moeda" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M14.6 9.6c-.5-.8-1.5-1.2-2.6-1.2-1.4 0-2.5.7-2.5 1.8 0 2.6 5.2 1.4 5.2 4 0 1.1-1.1 1.9-2.6 1.9-1.2 0-2.2-.5-2.7-1.3"/></symbol>
@@ -167,6 +173,7 @@
     <div id="painel">
       <div class="acoes">
         <button class="botao principal" id="falar" type="button" aria-label="Falar" title="Falar (⌥ Espaço)"><svg><use href="#i-mic"/></svg></button>
+        <button class="botao ligado" id="microfone" type="button" aria-label="Ligar ou desligar o microfone" aria-pressed="true" title="Microfone"><svg class="on"><use href="#i-mic"/></svg><svg class="off"><use href="#i-mic-off"/></svg></button>
         <button class="botao" id="mapa" type="button" aria-label="Abrir mapa" title="Mapa neural"><svg><use href="#i-mapa"/></svg></button>
         <button class="botao" id="cancelar" type="button" aria-label="Parar" title="Parar (Esc)"><svg><use href="#i-parar"/></svg></button>
         <button class="botao ligado" id="aura" type="button" aria-label="Mostrar ou esconder a aura" aria-pressed="true" title="Aura na tela"><svg><use href="#i-aura"/></svg></button>

@@ -163,6 +163,16 @@ document.getElementById('cancelar').onclick = () => {
   emit('cancelar');
 };
 document.getElementById('mapa').onclick = () => invoke('open_context_map').catch(() => {});
+// Liga/desliga o microfone; o menu da barra acompanha.
+document.getElementById('microfone').onclick = () => invoke('definir_microfone', { ligado: null }).catch(() => {});
+listen('teko-mic', ({ payload }) => {
+  const ligado = Boolean(payload);
+  const botao = document.getElementById('microfone');
+  botao.classList.toggle('ligado', ligado);
+  botao.setAttribute('aria-pressed', String(ligado));
+  ilha.classList.toggle('mic-off', !ligado);
+});
+
 // Liga/desliga a aura; o menu da barra acompanha.
 document.getElementById('aura').onclick = () => invoke('definir_aura', { visivel: null }).catch(() => {});
 listen('aura-visivel', ({ payload }) => {

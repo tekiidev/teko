@@ -55,6 +55,12 @@ test('Teko mal ouvido com pergunta comum não dispara', () => {
   assert.equal(pareceTeko('Teco'), true);
 });
 
+test('desligar o microfone', () => {
+  assert.equal(acao('Teko, desligar microfone'), 'mic-desligar');
+  assert.equal(acao('desliga o mic'), 'mic-desligar');
+  assert.equal(acao('mutar o microfone'), 'mic-desligar');
+});
+
 test('pergunta longa ou comum segue pra IA', () => {
   assert.equal(acao('como eu faço pra abrir o mapa neural no código do projeto?'), null);
   assert.equal(acao('qual a capital do Maranhão?'), null);
