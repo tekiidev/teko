@@ -872,7 +872,41 @@ async function restaurarAura() {
   } catch { /* nada salvo */ }
 }
 
-async function ligarGestos() {
+// Um pedido de câmera por vez: dois juntos (abertura do app + "religar" ao fechar o mapa)
+// fazem o WebView cancelar um deles com AbortError.
+let ligandoGestos = null;
+function ligarGestos() {
+  if (gestosStream) return Promise.resolve();
+  if (!ligandoGestos) ligandoGestos = ligarGestosAgora().finally(() => { ligandoGestos = null; });
+  return ligandoGestos;
+}
+
+/**
+ * Pede a câmera tentando de novo quando ela está ocupada ou o pedido foi cancelado:
+ * ao fechar o mapa, a janela dele ainda está soltando a câmera por um instante.
+ */
+async function pedirCamera() {
+  const esperas = [0, 500, 1000, 2000, 3500];
+  let ultimoErro = null;
+  for (const ms of esperas) {
+    if (ms) await new Promise((r) => setTimeout(r, ms));
+    if (!gestosSolicitados) return null;
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+    } catch (err) {
+      ultimoErro = err;
+      // Permissão negada ou sem câmera: tentar de novo não adianta.
+      if (!['AbortError', 'NotReadableError', 'TrackStartError'].includes(err?.name)) throw err;
+      console.warn(`[Teko] câmera ocupada (${err.name}), tentando de novo…`);
+    }
+  }
+  throw ultimoErro;
+}
+
+async function ligarGestosAgora() {
   if (gestosStream) return;
   gestosSolicitados = true;
   const video = document.getElementById('gestos-camera');
@@ -886,11 +920,13 @@ async function ligarGestos() {
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('câmera indisponível neste app');
     mostrar('teko', 'Ativando gesto T automaticamente enquanto o Teko estiver aberto…');
-    gestosStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false,
+    gestosStream = await pedirCamera();
+    if (!gestosStream || !gestosSolicitados) return desligarGestos(true);
+    // Se a câmera cair no meio (outro app pegou, Mac dormiu), religa sozinho.
+    gestosStream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (!gestosSolicitados) return;
+      desligarGestos(true).then(() => setTimeout(() => ligarGestos(), 1000));
     });
-    if (!gestosSolicitados) return desligarGestos(true);
     etapa = 'iniciar a câmera';
     video.srcObject = gestosStream;
     await video.play();
