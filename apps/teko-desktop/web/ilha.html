@@ -12,87 +12,151 @@
       --gelo: #cfeaff;
       --branco: #f2f7ff;
       --apagado: #5a6d86;
-      --notch-w: 200px;
+      --linha: rgba(95, 212, 255, 0.16);
       --notch-h: 32px;
+      --vol: 0; /* volume 0..1, vindo da aura */
+      --mola: cubic-bezier(.2, .9, .25, 1.15);
     }
-    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
-    body { font: 500 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--branco); }
+    @property --giro { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 
-    /* A pílula nasce do topo, colada no notch: cantos de cima retos, de baixo redondos. */
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+    body { font: 500 12px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; color: var(--branco); }
+
+    /* Pílula colada no topo: cantos de cima retos (somem no notch), de baixo redondos. */
     #ilha {
       position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-      width: var(--notch-w); height: var(--notch-h);
-      background: var(--preto); border-radius: 0 0 14px 14px;
-      box-sizing: border-box; overflow: hidden;
-      transition: width 260ms cubic-bezier(.2,.9,.3,1.2), height 260ms cubic-bezier(.2,.9,.3,1.2), border-radius 260ms;
+      width: 200px; height: var(--notch-h);
+      background: var(--preto); border-radius: 0 0 16px 16px;
+      box-sizing: border-box; isolation: isolate;
+      transition: width 380ms var(--mola), height 380ms var(--mola), border-radius 380ms var(--mola), box-shadow 300ms;
       display: flex; flex-direction: column;
     }
-    /* Sem notch, uma pílula pequena e discreta. */
-    body.sem-notch #ilha { border-radius: 0 0 12px 12px; }
+    #ilha.aberta { border-radius: 0 0 22px 22px; }
 
-    .linha { height: var(--notch-h); flex: 0 0 var(--notch-h); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
-    .ponto { width: 6px; height: 6px; border-radius: 50%; background: var(--apagado); opacity: 0; transition: opacity 200ms, background 200ms; }
-    body.escutando .ponto { opacity: .9; }
+    /* LED: anel fino em volta da pílula, desenhado por um gradiente cônico girando. */
+    #ilha::before {
+      content: ''; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; z-index: -1;
+      background: conic-gradient(from var(--giro), transparent 0deg, transparent 200deg, var(--azul) 280deg, var(--gelo) 320deg, var(--azul) 345deg, transparent 360deg);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: 0; transition: opacity 260ms;
+      animation: girar 1.6s linear infinite;
+    }
+    @keyframes girar { to { --giro: 360deg; } }
+    /* Você falando: o LED contorna e brilha mais quanto mais alto. */
+    #ilha[data-estado="ouvindo"]::before { opacity: calc(0.55 + var(--vol) * 0.45); }
+    #ilha[data-estado="ouvindo"] { box-shadow: 0 0 calc(6px + var(--vol) * 22px) rgba(46, 155, 255, calc(0.18 + var(--vol) * 0.4)); }
+    /* Pensando: o brilho corre mais rápido e mais fraco. */
+    #ilha[data-estado="pensando"]::before { opacity: .5; animation-duration: .9s; }
+    /* Falando: brilho suave por baixo, que respira com a voz dele. */
+    #ilha[data-estado="falando"] { box-shadow: 0 2px calc(8px + var(--vol) * 18px) rgba(95, 212, 255, calc(0.12 + var(--vol) * 0.3)); }
 
-    /* Onda de pixels ao lado do notch quando ele ouve, pensa ou fala. */
-    .onda { display: flex; gap: 2px; align-items: center; height: 14px; opacity: 0; transition: opacity 200ms; }
-    .onda i { width: 3px; height: 3px; background: var(--ciano); display: block; }
-    #ilha.ativa .onda { opacity: 1; }
-    #ilha[data-estado="ouvindo"] .onda i { background: var(--gelo); animation: pulo 700ms ease-in-out infinite; }
-    #ilha[data-estado="pensando"] .onda i { background: var(--azul); animation: giro 900ms linear infinite; }
-    #ilha[data-estado="falando"] .onda i { background: var(--branco); animation: pulo 420ms ease-in-out infinite; }
-    .onda i:nth-child(2) { animation-delay: 80ms !important; }
-    .onda i:nth-child(3) { animation-delay: 160ms !important; }
-    .onda i:nth-child(4) { animation-delay: 240ms !important; }
-    @keyframes pulo { 0%,100% { height: 3px; } 50% { height: 13px; } }
-    @keyframes giro { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
-    .estado { color: var(--ciano); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; opacity: 0; transition: opacity 200ms; }
-    #ilha.ativa .estado { opacity: 1; }
+    .linha { height: var(--notch-h); flex: 0 0 var(--notch-h); display: flex; align-items: center; justify-content: space-between; padding: 0 14px; box-sizing: border-box; }
+    .lado { width: 22px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--ciano); opacity: 0; transition: opacity 220ms; }
+    #ilha.ativa .lado, #ilha.aberta .lado { opacity: 1; }
+    .lado svg { width: 15px; height: 15px; }
+    .ponto { width: 5px; height: 5px; border-radius: 50%; background: var(--azul); box-shadow: 0 0 6px var(--azul); }
+    #ilha:not(.escutando) .ponto { background: var(--apagado); box-shadow: none; }
+
+    /* Barras da voz do Teko (lado direito), cada uma com seu atraso. */
+    .barras { display: flex; gap: 2.5px; align-items: center; height: 16px; }
+    .barras i { width: 2.5px; border-radius: 2px; background: var(--branco); height: 3px; transition: height 90ms ease-out; }
+    /* Pensando: três pontos que acendem em sequência. */
+    .pontos { display: none; gap: 3px; }
+    .pontos i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--azul); animation: acender 1s ease-in-out infinite; }
+    .pontos i:nth-child(2) { animation-delay: .15s; } .pontos i:nth-child(3) { animation-delay: .3s; }
+    @keyframes acender { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+    #ilha[data-estado="pensando"] .pontos { display: flex; }
+    #ilha[data-estado="pensando"] .barras { display: none; }
+    .icone-estado { display: none; }
+    #ilha[data-estado="ouvindo"] .mic, #ilha[data-estado="falando"] .som, #ilha[data-estado="pensando"] .faisca { display: block; }
+    #ilha[data-estado="parado"] .marca, #ilha:not([data-estado]) .marca { display: block; }
 
     #legenda {
-      padding: 2px 16px 12px; color: var(--branco); font-size: 12.5px; line-height: 1.45;
+      padding: 0 18px 12px; font-size: 13px; line-height: 1.45; color: var(--branco);
       max-height: 96px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-      opacity: 0; transition: opacity 200ms;
+      opacity: 0; transform: translateY(-4px); transition: opacity 260ms, transform 260ms;
     }
-    #legenda .quem { color: var(--ciano); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; display: block; }
-    #ilha.com-legenda #legenda { opacity: 1; }
+    #legenda.sua { color: var(--gelo); opacity: .75; }
+    #ilha.com-legenda #legenda { opacity: 1; transform: none; }
+    #ilha.com-legenda #legenda.sua { opacity: .7; }
 
     /* Painel ao passar o mouse. */
-    #painel { padding: 4px 14px 12px; display: none; flex-direction: column; gap: 9px; }
-    #ilha.aberta #painel { display: flex; }
+    #painel { padding: 6px 14px 14px; display: none; flex-direction: column; gap: 10px; opacity: 0; transform: translateY(-6px); }
+    #ilha.aberta #painel { display: flex; animation: entrar 260ms var(--mola) forwards; }
     #ilha.aberta #legenda { display: none; }
-    .acoes { display: flex; gap: 6px; }
-    .acoes button {
-      flex: 1; height: 30px; border: 1px solid rgba(95,212,255,.25); border-radius: 9px;
-      background: rgba(46,155,255,.08); color: var(--branco); font: inherit; cursor: pointer;
+    @keyframes entrar { to { opacity: 1; transform: none; } }
+    .acoes { display: flex; gap: 8px; justify-content: center; }
+    .botao {
+      width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linha);
+      background: rgba(46, 155, 255, .07); color: var(--gelo); cursor: pointer;
+      display: grid; place-items: center; transition: background 160ms, border-color 160ms, transform 120ms;
     }
-    .acoes button:hover { background: rgba(46,155,255,.22); border-color: rgba(95,212,255,.6); }
+    .botao svg { width: 18px; height: 18px; }
+    .botao:hover { background: rgba(46, 155, 255, .2); border-color: rgba(95, 212, 255, .55); color: var(--branco); }
+    .botao:active { transform: scale(.92); }
+    .botao.principal { background: var(--azul); border-color: var(--azul); color: #00101f; }
+    .botao.principal:hover { background: var(--ciano); border-color: var(--ciano); }
+    .campo { position: relative; }
     #pedido {
-      height: 32px; border: 1px solid rgba(95,212,255,.25); border-radius: 9px; padding: 0 10px;
-      background: #05070a; color: var(--branco); font: inherit; outline: none;
+      width: 100%; box-sizing: border-box; height: 34px; border: 1px solid var(--linha); border-radius: 17px; padding: 0 38px 0 14px;
+      background: #05070a; color: var(--branco); font: inherit; font-size: 12.5px; outline: none; transition: border-color 160ms;
     }
     #pedido:focus { border-color: var(--ciano); }
     #pedido::placeholder { color: var(--apagado); }
-    .rodape { display: flex; justify-content: space-between; color: var(--apagado); font-size: 10.5px; }
+    #enviar { position: absolute; right: 4px; top: 4px; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--apagado); cursor: pointer; display: grid; place-items: center; }
+    #enviar svg { width: 15px; height: 15px; }
+    #pedido:not(:placeholder-shown) + #enviar { color: var(--ciano); }
+    .rodape { display: flex; justify-content: center; gap: 6px; align-items: center; color: var(--apagado); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+    .rodape svg { width: 11px; height: 11px; }
     .rodape b { color: var(--gelo); font-weight: 500; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #ilha, #legenda, .barras i { transition: none; }
+      #ilha::before, .pontos i { animation: none; }
+      #ilha[data-estado="ouvindo"]::before, #ilha[data-estado="pensando"]::before { opacity: .7; }
+    }
   </style>
 </head>
 <body>
+  <!-- Ícones desenhados à mão (traço de 1.8), sem biblioteca. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+      <symbol id="i-som" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></symbol>
+      <symbol id="i-faisca" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></symbol>
+      <symbol id="i-mapa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M8 6.6l7.8.4M7.2 8l3.8 8M16.9 9l-3.8 7"/></symbol>
+      <symbol id="i-parar" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2.2"/></symbol>
+      <symbol id="i-enviar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+      <symbol id="i-moeda" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M14.6 9.6c-.5-.8-1.5-1.2-2.6-1.2-1.4 0-2.5.7-2.5 1.8 0 2.6 5.2 1.4 5.2 4 0 1.1-1.1 1.9-2.6 1.9-1.2 0-2.2-.5-2.7-1.3"/></symbol>
+    </defs>
+  </svg>
+
   <div id="ilha" data-estado="parado">
     <div class="linha">
-      <div class="onda" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <span class="ponto" title="Escutando “Teko”"></span>
-      <span class="estado" id="estado"></span>
+      <span class="lado">
+        <svg class="icone-estado mic"><use href="#i-mic"/></svg>
+        <svg class="icone-estado som"><use href="#i-som"/></svg>
+        <svg class="icone-estado faisca"><use href="#i-faisca"/></svg>
+        <span class="icone-estado marca ponto" title="Escutando “Teko”"></span>
+      </span>
+      <span class="lado">
+        <span class="barras" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="pontos" aria-hidden="true"><i></i><i></i><i></i></span>
+      </span>
     </div>
     <div id="legenda" aria-live="polite"></div>
     <div id="painel">
       <div class="acoes">
-        <button id="falar" type="button">🎙 Falar</button>
-        <button id="mapa" type="button">◎ Mapa</button>
-        <button id="cancelar" type="button">✕ Parar</button>
+        <button class="botao principal" id="falar" type="button" aria-label="Falar" title="Falar (⌥ Espaço)"><svg><use href="#i-mic"/></svg></button>
+        <button class="botao" id="mapa" type="button" aria-label="Abrir mapa" title="Mapa neural"><svg><use href="#i-mapa"/></svg></button>
+        <button class="botao" id="cancelar" type="button" aria-label="Parar" title="Parar (Esc)"><svg><use href="#i-parar"/></svg></button>
       </div>
-      <input id="pedido" type="text" placeholder="Peça algo ao Teko e aperte Enter" autocomplete="off" spellcheck="false" />
-      <div class="rodape"><span>hoje <b id="gasto">…</b></span><span id="dica">⌥ Espaço também fala</span></div>
+      <div class="campo">
+        <input id="pedido" type="text" placeholder="Peça algo ao Teko" autocomplete="off" spellcheck="false" />
+        <button id="enviar" type="button" aria-label="Enviar"><svg><use href="#i-enviar"/></svg></button>
+      </div>
+      <div class="rodape" title="Gasto de hoje e quanto o Teko poupou"><svg><use href="#i-moeda"/></svg><b id="gasto">…</b></div>
     </div>
   </div>
   <script type="module" src="ilha.js"></script>
