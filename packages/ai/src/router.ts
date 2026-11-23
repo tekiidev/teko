@@ -3,9 +3,13 @@ import { ADAPTERS } from './providers/index.js';
 import { env } from './config.js';
 import { tokensSince, windowStart } from './usage.js';
 import { createApproval, resolveApproval } from './approvals.js';
-import { getTool, executeTool, previewFor } from './tools/index.js';
+import { getTool, executeTool, previewFor, toolsForModel } from './tools/index.js';
 import { addUsage, computeCost, type Usage } from './pricing.js';
 import { cacheKey, cacheSettings, getCached, putCached } from './response-cache.js';
+
+const modelTags = (model): string[] => safeJson(model?.tags, []) || [];
+/** Ferramentas já chamadas nesta conversa (pelos resultados com role tool). */
+const toolsUsed = (conversation) => new Set<string>(conversation.filter((m) => m.role === 'tool' && m.name).map((m) => m.name));
 
 export function resolveKey(provider) {
   if (!provider) return null;
@@ -373,7 +377,7 @@ export async function* runChat({
       adapter,
       conversation,
       system,
-      tools: activeTools,
+      tools: toolsForModel(activeTools, modelTags(model), toolsUsed(conversation)),
       signal,
       timeoutMs,
       maxTokens,
