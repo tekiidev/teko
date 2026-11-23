@@ -56,14 +56,11 @@ export function parseAgentOutput(stdout: string) {
   }
 }
 
-export async function delegateAgent(args: any = {}, ctx) {
-  const task = String(args.task || '').trim();
-  if (!task) throw new Error('informe a tarefa');
-  if (!ctx?.root) return { ok: false, output: 'sem projeto ativo: escolha um projeto com caminho local' };
+/** Roda o Claude Code uma vez na pasta e devolve resultado, custo e arquivos que mudaram. */
+export async function runClaude(task: string, root: string) {
   const bin = findClaude();
-  if (!bin) return { ok: false, output: 'Claude Code não encontrado (instale ou defina CLAUDE_BIN)' };
-
-  const antes = await changedFiles(ctx.root);
+  if (!bin) return { ok: false, result: 'Claude Code não encontrado (instale ou defina CLAUDE_BIN)', costUsd: 0, turns: 0, changed: [], timeout: false };
+  const antes = await changedFiles(root);
   const argv = [
     '-p', task,
     '--output-format', 'json',
@@ -72,9 +69,8 @@ export async function delegateAgent(args: any = {}, ctx) {
     '--append-system-prompt',
     'Você foi chamado pelo Teko (orquestrador). Faça só o que a tarefa pede, sem commitar. No fim, resuma em português o que mudou e por quê, em poucas linhas.',
   ];
-
-  const resultado: any = await new Promise((resolve) => {
-    const filho = spawn(bin, argv, { cwd: ctx.root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const r: any = await new Promise((resolve) => {
+    const filho = spawn(bin, argv, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => filho.kill('SIGTERM'), TIMEOUT_MS);
@@ -83,18 +79,76 @@ export async function delegateAgent(args: any = {}, ctx) {
     filho.on('error', (err) => { clearTimeout(timer); resolve({ code: -1, stdout, stderr: String(err.message) }); });
     filho.on('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, stdout, stderr }); });
   });
+  const depois = await changedFiles(root);
+  const parsed = parseAgentOutput(r.stdout);
+  return {
+    ok: parsed.ok && r.code === 0,
+    result: parsed.result || String(r.stderr || '').slice(0, 1500),
+    costUsd: parsed.costUsd,
+    turns: parsed.turns,
+    changed: [...depois].filter((f) => !antes.has(f)),
+    timeout: r.signal === 'SIGTERM',
+  };
+}
 
-  const depois = await changedFiles(ctx.root);
-  const novos = [...depois].filter((f) => !antes.has(f));
-  const parsed = parseAgentOutput(resultado.stdout);
-  const timeout = resultado.signal === 'SIGTERM';
+function registrarCusto(custo: number, ctx) {
+  if (!custo) return;
+  import('../usage.js').then(({ recordUsage }) =>
+    recordUsage({ projectId: ctx?.projectId || null, modelId: 'anthropic/claude-code', providerId: 'anthropic', cost: custo, kind: 'agent' }),
+  ).catch(() => {});
+}
 
-  const partes = [
-    `Claude Code ${parsed.ok && resultado.code === 0 ? 'terminou' : timeout ? 'parou por tempo' : 'terminou com erro'}` +
-      (parsed.costUsd ? ` · US$ ${parsed.costUsd.toFixed(4)}` : '') +
-      (parsed.turns ? ` · ${parsed.turns} passos` : ''),
-    parsed.result.slice(0, MAX_OUTPUT) || String(resultado.stderr || '').slice(0, 1500),
-    novos.length ? `Arquivos alterados:\n${novos.map((f) => `- ${f}`).join('\n')}` : 'Nenhum arquivo novo alterado.',
+/**
+ * Dupla: o Claude Code implementa, uma IA de outra empresa revisa o diff e, se ela achar
+ * problema médio ou grave, o Claude Code corrige uma vez. Devolve um relatório pro Teko resumir.
+ */
+export async function delegateAgent(args: any = {}, ctx) {
+  const task = String(args.task || '').trim();
+  if (!task) throw new Error('informe a tarefa');
+  if (!ctx?.root) return { ok: false, output: 'sem projeto ativo: escolha um projeto com caminho local' };
+
+  const impl = await runClaude(task, ctx.root);
+  registrarCusto(impl.costUsd, ctx);
+  const linhas = [
+    `IMPLEMENTAÇÃO (Claude Code): ${impl.ok ? 'ok' : impl.timeout ? 'parou por tempo' : 'erro'} · US$ ${impl.costUsd.toFixed(4)} · ${impl.turns} passos`,
+    impl.result.slice(0, MAX_OUTPUT),
   ];
-  return { ok: parsed.ok && resultado.code === 0, output: partes.filter(Boolean).join('\n\n') };
+  const arquivos = new Set(impl.changed);
+  let custoTotal = impl.costUsd;
+
+  const revisar = process.env.TEKO_AGENT_REVIEW !== '0' && impl.ok;
+  if (revisar) {
+    const { collectDiff, reviewDiff } = await import('../agents/review.js');
+    const rev: any = await reviewDiff({ task, diff: await collectDiff(ctx.root), projectId: ctx.projectId || null });
+    if (rev.skipped) {
+      linhas.push(`REVISÃO: pulada (${rev.skipped})`);
+    } else if (!rev.review) {
+      custoTotal += rev.cost;
+      linhas.push(`REVISÃO (${rev.label}): resposta fora do formato · US$ ${rev.cost.toFixed(4)}\n${rev.raw}`);
+    } else {
+      custoTotal += rev.cost;
+      const { aprovado, resumo, problemas } = rev.review;
+      linhas.push(
+        `REVISÃO (${rev.label}): ${aprovado ? 'aprovado' : `${problemas.length} problema(s)`} · US$ ${rev.cost.toFixed(4)}` +
+          (resumo ? `\n${resumo}` : '') +
+          (problemas.length ? `\n${problemas.map((p) => `- [${p.gravidade}] ${p.arquivo}: ${p.problema}`).join('\n')}` : ''),
+      );
+      const corrigir = problemas.filter((p) => p.gravidade !== 'baixa');
+      if (corrigir.length) {
+        const fix = await runClaude(
+          `Um revisor apontou problemas nas mudanças que você fez para a tarefa "${task}". Corrija só estes pontos:\n` +
+            corrigir.map((p) => `- ${p.arquivo}: ${p.problema}`).join('\n'),
+          ctx.root,
+        );
+        registrarCusto(fix.costUsd, ctx);
+        custoTotal += fix.costUsd;
+        fix.changed.forEach((f) => arquivos.add(f));
+        linhas.push(`CORREÇÃO (Claude Code): ${fix.ok ? 'ok' : 'erro'} · US$ ${fix.costUsd.toFixed(4)}\n${fix.result.slice(0, 2500)}`);
+      }
+    }
+  }
+
+  linhas.push(arquivos.size ? `ARQUIVOS ALTERADOS:\n${[...arquivos].map((f) => `- ${f}`).join('\n')}` : 'Nenhum arquivo novo alterado.');
+  linhas.push(`CUSTO TOTAL: US$ ${custoTotal.toFixed(4)}`);
+  return { ok: impl.ok, output: linhas.join('\n\n') };
 }

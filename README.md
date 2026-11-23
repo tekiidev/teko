@@ -223,6 +223,8 @@ Com um projeto que tem caminho local, o modelo ganha seis ferramentas:
 
 O Teko não tenta programar melhor que um agente de código: ele **delega**. Com um projeto com caminho local ativo, a ferramenta `delegate_agent` roda o [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sem interface (`claude -p`) dentro do projeto e devolve o resumo, o custo e os arquivos que mudaram.
 
+**Dupla com revisão cruzada:** depois que o Claude Code implementa, uma IA de **outra empresa** (GPT-5.5, ou Gemini Pro de reserva) revisa o diff. Se ela apontar problema médio ou grave, o Claude Code corrige uma vez. O relatório traz o que mudou, o que o revisor pegou e o custo de cada agente (que também vai pra aba Uso). Num teste, implementar uma função custou US$ 0,36 no Claude Code e US$ 0,002 na revisão. `TEKO_AGENT_REVIEW=0` desliga a revisão; `TEKO_REVIEWER` escolhe o revisor.
+
 - Sempre pede aprovação antes (no painel e no terminal)
 - O Claude Code só edita arquivos (`--permission-mode acceptEdits`), não roda comandos por conta própria e não commita
 - Limite por tarefa: `TEKO_AGENT_MAX_USD` (padrão US$ 2) e `TEKO_AGENT_TIMEOUT_MS` (padrão 15 min)

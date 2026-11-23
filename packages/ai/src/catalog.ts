@@ -90,6 +90,8 @@ export const MODELS = [
   // Rápidos e baratos (reserva do GPT-6 Luna na voz). Preços estimados.
   { id: 'openai/gpt-5.4-nano', provider: 'openai', model: 'gpt-5.4-nano', label: 'GPT-5.4 nano', ctx: 400000, priceIn: 0.05, priceOut: 0.4, tags: ['docs', 'bug', 'economic'] },
   { id: 'openai/gpt-4.1-mini', provider: 'openai', model: 'gpt-4.1-mini', label: 'GPT-4.1 mini', ctx: 1000000, priceIn: 0.4, priceOut: 1.6, tags: ['docs', 'bug', 'economic'] },
+  // Revisor da dupla (maestro): forte e de outra empresa que não a do Claude Code. Preço estimado.
+  { id: 'openai/gpt-5.5', provider: 'openai', model: 'gpt-5.5', label: 'GPT-5.5', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['review', 'plan', 'code'] },
   { id: 'openai/gpt-6-luna', provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', ctx: 1050000, priceIn: 0.1, priceOut: 0.5, tags: ['code', 'docs', 'bug', 'economic'] },
   { id: 'openai/gpt-5.1-codex', provider: 'openai', model: 'gpt-5.1-codex', label: 'GPT-5.1 Codex', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['code', 'review', 'bug'] },
   { id: 'openai/gpt-5.1', provider: 'openai', model: 'gpt-5.1', label: 'GPT-5.1', ctx: 400000, priceIn: 1.25, priceOut: 10, tags: ['plan', 'docs', 'review'] },
@@ -144,6 +146,7 @@ export const CHAIN_ADDITIONS: { id: string; profile: string; model: string; befo
   // Voz: modelos rápidos da OpenAI na frente (quem tem a chave responde mais rápido).
   { id: 'voice-gpt-5-4-nano', profile: 'voice', model: 'openai/gpt-5.4-nano', before: ['google/gemini-flash-lite-latest', 'anthropic/claude-haiku-5-5'] },
   { id: 'voice-gpt-4-1-mini', profile: 'voice', model: 'openai/gpt-4.1-mini', before: ['google/gemini-flash-lite-latest', 'anthropic/claude-haiku-5-5'] },
+  { id: 'review-gpt-5-5', profile: 'review', model: 'openai/gpt-5.5', before: ['openai/gpt-5.1-codex', 'anthropic/claude-opus-5-5'] },
   { id: 'code-gemini-flash-lite', profile: 'code', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'bug-gemini-flash-lite', profile: 'bug', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'terse-gemini-flash-lite', profile: 'terse', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest'] },
@@ -202,6 +205,7 @@ export const PROFILES = [
     description: 'Code review, segurança, bugs escondidos.',
     systemPrompt: `${BASE_SYSTEM} Modo: revisão crítica. Aponte problema, impacto e correção. Ordene por severidade. Não elogie de graça.`,
     chain: [
+      'openai/gpt-5.5',
       'openai/gpt-5.1-codex',
       'anthropic/claude-opus-5-5',
       'xai/grok-code-fast-1',
