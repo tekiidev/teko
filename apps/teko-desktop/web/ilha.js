@@ -29,7 +29,7 @@ let zerarVolume = 0;
 function tamanho() {
   const base = notch.tem ? notch.largura : 160;
   if (aberta) return { w: Math.max(LARGURA_PAINEL, base + 40), h: notch.altura + 142 + Math.min(40, document.getElementById('origens').scrollHeight) };
-  if (estado !== 'parado' || temLegenda) {
+  if (estado !== 'parado' || temLegenda || gesto) {
     const extra = temLegenda ? Math.min(110, legenda.scrollHeight + 2) : 0;
     return { w: Math.max(base + 100, LARGURA_ATIVA), h: notch.altura + extra };
   }
@@ -141,6 +141,14 @@ listen('teko-legenda', ({ payload }) => {
 });
 
 listen('teko-escuta', ({ payload }) => ilha.classList.toggle('escutando', Boolean(payload)));
+
+// Gesto em andamento (por enquanto o T): a ilha cresce um pouco e acende o T.
+let gesto = '';
+listen('teko-gesto', ({ payload }) => {
+  gesto = payload || '';
+  ilha.classList.toggle('gesto-t', gesto === 'T');
+  redesenhar();
+});
 
 // Retorno na hora: a ilha já mostra o estado enquanto a aura liga o microfone.
 document.getElementById('falar').onclick = () => {

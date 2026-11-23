@@ -35,7 +35,14 @@ const aura = {
     if (auraTela.estado !== valor && valor !== 'gesto') avisarIlha('teko-estado', valor);
     auraTela.estado = valor;
   },
-  formaT: (v) => auraTela.formaT(v),
+  formaT: (v) => {
+    // A ilha acende o T junto: dá retorno do gesto mesmo com a aura desligada.
+    if (Boolean(v) !== tNaIlha) {
+      tNaIlha = Boolean(v);
+      avisarIlha('teko-gesto', tNaIlha ? 'T' : '');
+    }
+    auraTela.formaT(v);
+  },
   janelaCamera: (v) => auraTela.janelaCamera(v),
   volume: (v) => {
     auraTela.volume(v);
@@ -49,6 +56,7 @@ const aura = {
   },
 };
 const volumeIlha = { em: 0, v: 0 };
+let tNaIlha = false;
 const legenda = document.getElementById('legenda');
 
 // Detector de fala (VAD) por volume. Um quadro = 4096 amostras (~85 ms a 48 kHz).
@@ -1095,8 +1103,8 @@ async function ligarGestosAgora() {
         // fechem ou que o detector perca uma mão por um instante.
         if (emJanela && !gestosMapaAberto && detectedHands.length >= 2) {
           const d = Math.hypot(detectedHands[0][9].x - detectedHands[1][9].x, detectedHands[0][9].y - detectedHands[1][9].y);
-          // Afastar de verdade (~9% da imagem), não só um tremor das mãos depois do T.
-          if (d > gestosBase + .09) await abrirMapa();
+          // Afastar ~6% da imagem: mais que um tremor das mãos, sem precisar abrir os braços.
+          if (d > gestosBase + .06) await abrirMapa();
         }
         if (gestosMapaAberto) {
           // já abriu neste quadro
