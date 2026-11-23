@@ -1,6 +1,7 @@
 import { listFiles, readFile, writeFile, editFile } from './fs.js';
 import { grep } from './search.js';
 import { runCommand } from './shell.js';
+import { delegateAgent } from './agent.js';
 import { search } from '../search-index.js';
 import { getSkill, renderSkill } from '../skills.js';
 
@@ -133,6 +134,19 @@ export const TOOLS = [
     preview: (args) => `$ ${args.command}${args.cwd ? `\n(em ${args.cwd})` : ''}`,
   },
   {
+    name: 'delegate_agent',
+    description:
+      'Delega uma tarefa de código grande (implementar, corrigir bug, refatorar vários arquivos) pro Claude Code, que edita o projeto ativo e devolve um resumo. Use para mudanças que exigem várias edições; para ajustes pequenos, prefira edit_file.',
+    parameters: {
+      type: 'object',
+      properties: { task: str('tarefa completa, com contexto suficiente pra ser feita sem perguntas') },
+      required: ['task'],
+    },
+    requiresApproval: true,
+    run: delegateAgent,
+    preview: (args) => `delegar pro Claude Code:\n${String(args.task || '').slice(0, 700)}`,
+  },
+  {
     name: 'use_skill',
     description:
       'Carrega as instruções completas de uma skill listada em "Skills disponíveis". Use antes de responder quando o pedido combinar com a descrição de uma skill.',
@@ -151,8 +165,9 @@ export const TOOLS = [
   },
 ];
 
-export function toolDefs() {
-  return TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters }));
+/** Definições das ferramentas pro modelo. `readOnly` deixa só as que não pedem aprovação. */
+export function toolDefs({ readOnly = false } = {}) {
+  return TOOLS.filter((tool) => !readOnly || !tool.requiresApproval).map(({ name, description, parameters }) => ({ name, description, parameters }));
 }
 
 export function getTool(name) {

@@ -219,6 +219,18 @@ Com um projeto que tem caminho local, o modelo ganha seis ferramentas:
 
 É aqui que o Ultron fica preso. Tudo fica restrito ao caminho do projeto: `../` e caminhos externos são bloqueados. Comandos destrutivos óbvios (`rm -rf /`, `sudo`, `mkfs`, `dd if=`) são recusados antes da aprovação. Aprovações expiram em 5 minutos; se você fechar a aba, a execução é cancelada.
 
+## Maestro: Teko delega pro Claude Code
+
+O Teko não tenta programar melhor que um agente de código: ele **delega**. Com um projeto com caminho local ativo, a ferramenta `delegate_agent` roda o [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sem interface (`claude -p`) dentro do projeto e devolve o resumo, o custo e os arquivos que mudaram.
+
+- Sempre pede aprovação antes (no painel e no terminal)
+- O Claude Code só edita arquivos (`--permission-mode acceptEdits`), não roda comandos por conta própria e não commita
+- Limite por tarefa: `TEKO_AGENT_MAX_USD` (padrão US$ 2) e `TEKO_AGENT_TIMEOUT_MS` (padrão 15 min)
+- Precisa do Claude Code instalado (`claude` no PATH ou `CLAUDE_BIN`)
+- Num teste, corrigir um bug de uma linha custou ~US$ 0,19 e levou ~11 s
+- Trocar de projeto falando ou escrevendo: "Teko, trabalha no projeto Cofu", "sai do projeto" (resolvido localmente, sem gastar IA)
+- Na voz, por enquanto, só ferramentas de leitura: a aprovação falada ou por gesto vem a seguir
+
 ## Busca local
 
 O índice usa **FTS5 do próprio SQLite** (`unicode61`, sem acento), com BM25 e trechos destacados. Sem embeddings, sem serviço externo, sem dependência.

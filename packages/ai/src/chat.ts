@@ -41,6 +41,23 @@ function usageRow(sessionId, projectId, r, kind) {
   });
 }
 
+const plain = (t: string) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+/**
+ * "Teko, trabalha no projeto Cofu" / "muda pro teko" / "sai do projeto".
+ * Só vale se o nome bater com um projeto cadastrado (senão segue pra IA normalmente).
+ * Devolve { projectId } (null = sair do projeto) ou undefined se não for comando.
+ */
+export function parseProjectCommand(text: string, projects: { id: string; name: string; slug?: string | null }[]) {
+  const t = plain(text).replace(/^(ei,?\s*)?teko[,.!]?\s*/, '').replace(/[.!?]+$/, '');
+  if (/^(sai|sair|fecha|fechar) (do|o) projeto$|^sem projeto$/.test(t)) return { projectId: null, name: null };
+  const m = /^(?:(?:vamos |bora )?trabalhar|trabalha|mexe|mexer|muda|mudar|troca|trocar|abre|abrir|usa|usar|entra|entrar)\s+(?:(?:no|na|pro|pra|para o|para a|o|a|em)\s+)?(?:projeto\s+)?(.+)$/.exec(t);
+  if (!m) return undefined;
+  const nome = m[1].trim();
+  const achado = projects.find((p) => plain(p.name) === nome || plain(p.slug || '') === nome);
+  return achado ? { projectId: achado.id, name: achado.name } : undefined;
+}
+
 export function getOrCreateSession({ sessionId = null, projectId = null, profileId = null, title = '' }) {
   const existing = sessionId ? db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) : null;
   if (existing) return existing;
@@ -85,9 +102,26 @@ export async function* runTurn({
 
   yield { type: 'meta', sessionId: session.id, projectId: session.project_id, profileId };
 
+  // Troca de projeto falada/escrita: resolve aqui, sem gastar IA.
+  const troca = parseProjectCommand(text, db.prepare('SELECT id, name, slug FROM projects').all());
+  if (troca !== undefined) {
+    db.prepare('UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?').run(troca.projectId, nowIso(), session.id);
+    const resposta = troca.projectId ? `Beleza, agora estou no projeto ${troca.name}.` : 'Beleza, saí do projeto.';
+    db.prepare("INSERT INTO messages (id, session_id, role, content, model_id, meta, created_at) VALUES (?, ?, 'assistant', ?, 'teko/local', ?, ?)").run(
+      newId('msg'), session.id, resposta, JSON.stringify({ label: 'Teko', local: true }), nowIso(),
+    );
+    yield { type: 'meta', sessionId: session.id, projectId: troca.projectId, profileId };
+    yield { type: 'delta', text: resposta };
+    const usage = { inputTokens: 0, outputTokens: 0, latencyMs: 0 };
+    yield { type: 'done', modelId: 'teko/local', providerId: 'teko', label: 'Teko', usage, cost: 0, saved: 0, text: resposta, tools: [] };
+    yield { type: 'end', ok: true, usage, cost: 0, modelId: 'teko/local', cacheHit: false };
+    return;
+  }
+
   const project = session.project_id ? db.prepare('SELECT * FROM projects WHERE id = ?').get(session.project_id) : null;
   const projectPath = project?.path && fs.existsSync(project.path) ? project.path : null;
-  const tools = projectPath ? toolDefs() : null;
+  // Na voz ainda não dá pra aprovar no meio da conversa (issue #62): só ferramentas de leitura.
+  const tools = projectPath ? toolDefs({ readOnly: profileId === 'voice' }) : null;
 
   let retrieved = '';
   if (project?.id) {
