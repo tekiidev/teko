@@ -222,9 +222,12 @@ fn main() {
             let escuta_menu = escuta.clone();
             let gestos_menu = gestos.clone();
             let gesto_ativo_menu = Arc::clone(&gesto_ativo);
+            // Ícone da barra no estilo do macOS (Bluetooth, Wi-Fi): desenho só em preto com fundo
+            // transparente, marcado como template; o sistema pinta de branco ou preto conforme a barra.
+            let icone_barra = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .icon_as_template(false)
+                .icon(icone_barra)
+                .icon_as_template(true)
                 .tooltip("Teko")
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
