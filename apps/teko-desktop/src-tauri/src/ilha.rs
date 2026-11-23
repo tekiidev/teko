@@ -77,6 +77,8 @@ pub fn criar(app: &AppHandle) -> tauri::Result<()> {
         .visible_on_all_workspaces(true)
         .skip_taskbar(true)
         .focused(false)
+        // Sem isso o macOS gasta o primeiro clique só pra ativar a janela e o botão não recebe nada.
+        .accept_first_mouse(true)
         .visible(false)
         .build()?;
     posicionar(&janela);

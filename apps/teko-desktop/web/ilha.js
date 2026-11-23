@@ -104,8 +104,18 @@ listen('teko-legenda', ({ payload }) => {
 
 listen('teko-escuta', ({ payload }) => document.body.classList.toggle('escutando', Boolean(payload)));
 
-document.getElementById('falar').onclick = () => emit('ilha-falar');
-document.getElementById('cancelar').onclick = () => emit('cancelar');
+// Retorno na hora: a ilha já mostra o estado enquanto a aura liga o microfone.
+document.getElementById('falar').onclick = () => {
+  estado = 'ouvindo';
+  aberta = false;
+  redesenhar();
+  emit('ilha-falar');
+};
+document.getElementById('cancelar').onclick = () => {
+  aberta = false;
+  redesenhar();
+  emit('cancelar');
+};
 document.getElementById('mapa').onclick = () => invoke('open_context_map').catch(() => {});
 pedido.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { pedido.value = ''; abrir(false); return; }
