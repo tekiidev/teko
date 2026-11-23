@@ -13,6 +13,7 @@ export const AJUDA: SecaoAjuda[] = [
       { como: '"Teko"', faz: 'chama o Teko (bipe), depois é só falar o pedido' },
       { como: '"Teko, <pergunta>"', faz: 'pergunta direto, numa frase só' },
       { como: 'segurar ⌥ Espaço', faz: 'fala enquanto segura e envia ao soltar' },
+      { como: 'menu da barra > Abrir junto com o Mac', faz: 'o Teko abre no login e sobe o servidor e a voz sozinho' },
       { como: 'estalo de dedos', faz: 'chama o Teko, igual falar "Teko" (desliga no menu da barra)' },
       { como: 'mouse no notch', faz: 'abre a ilha: Falar, Mapa, Parar e um campo pra pedir digitando' },
       { como: 'continuar falando', faz: 'depois da resposta ele segue ouvindo ~8 s sem precisar do "Teko"' },

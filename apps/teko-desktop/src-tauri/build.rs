@@ -1,4 +1,11 @@
 fn main() {
+    // Caminho do Node no momento da compilação: quando o Mac abre o Teko sozinho (login),
+    // o PATH é mínimo e não acha o Node do nvm. O app usa esse caminho pra subir o servidor.
+    println!("cargo:rerun-if-env-changed=PATH");
+    if let Some(node) = std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join("node")).find(|n| n.is_file())) {
+        println!("cargo:rustc-env=TEKO_NODE={}", node.display());
+    }
+
     // Declara os comandos do app no ACL do Tauri. Com isso cada janela só chama
     // os comandos liberados na capability dela (capabilities/*.json). A janela do
     // mapa carrega do Teko local por URL (origem "remota") e precisa disso pra
