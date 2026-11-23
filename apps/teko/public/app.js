@@ -684,15 +684,15 @@ async function mountContextMap() {
     $('#map-help')?.setAttribute('aria-expanded', String(show));
   }
   $('#map-help').onclick = () => toggleHelp();
-  window.addEventListener('keydown', (e) => {
+  // Atalhos só valem com o mapa aberto: saem junto quando você troca de aba.
+  const onHelpKey = (e) => {
     if (e.key === '?' && !/input|textarea/i.test(e.target?.tagName || '')) toggleHelp();
     else if (e.key === 'Escape' && !$('#map-help-panel')?.hidden) { e.stopImmediatePropagation(); toggleHelp(false); }
-  }, true);
+  };
+  window.addEventListener('keydown', onHelpKey, true);
   // No app nativo, Esc também fecha o mapa.
-  if (native) {
-    const onEsc = (e) => { if (e.key === 'Escape') window.__TAURI__?.core?.invoke('close_context_map'); };
-    window.addEventListener('keydown', onEsc);
-  }
+  const onEsc = (e) => { if (native && e.key === 'Escape' && !/input|textarea/i.test(e.target?.tagName || '')) window.__TAURI__?.core?.invoke('close_context_map'); };
+  window.addEventListener('keydown', onEsc);
   $('#map-refresh').onclick = loadGraph;
   $('#map-search').addEventListener('input', () => {
     view.query = $('#map-search').value; clearTimeout(view.searchTimer);
@@ -957,7 +957,7 @@ async function mountContextMap() {
   }
   await loadGraph();
   if (native && new URLSearchParams(location.search).get('gestos') !== '0') startGestures();
-  return () => { disposed = true; observer.disconnect(); clearTimeout(view.searchTimer); cancelAnimationFrame(raf); unlistenGestures?.(); stopGestures(); };
+  return () => { disposed = true; window.removeEventListener('keydown', onHelpKey, true); window.removeEventListener('keydown', onEsc); observer.disconnect(); clearTimeout(view.searchTimer); cancelAnimationFrame(raf); unlistenGestures?.(); stopGestures(); };
 }
 
 /* ---------------- chat ---------------- */

@@ -51,15 +51,6 @@ a { color: var(--accent); }
   overflow: hidden;
 }
 
-body.native-map #app { grid-template-columns: 1fr; }
-body.native-map .sidebar,
-body.native-map .topbar { display: none; }
-body.native-map .main { height: 100vh; }
-body.native-map #view { overflow: hidden; }
-body.native-map .context-map-page { height: 100vh; min-height: 0; padding: 18px; }
-body.native-map .map-workspace { min-height: 0; }
-body.native-map .map-stage { min-height: 0; }
-
 /* ---------- sidebar ---------- */
 .sidebar {
   border-right: 1px solid var(--line);
