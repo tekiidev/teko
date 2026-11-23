@@ -18,6 +18,25 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 /// Se o reconhecimento de gestos está ligado no menu; o mapa recebe isso na URL.
 struct GestoAtivo(Arc<AtomicBool>);
 
+/// Item "Reconhecer gesto T" do menu, pra acompanhar quando a voz liga ou desliga os gestos.
+struct ItemGestos(std::sync::Mutex<Option<CheckMenuItem<tauri::Wry>>>);
+
+/// "Teko, ativar/desativar gestos": mesmo efeito do item do menu.
+#[tauri::command]
+fn definir_gestos(app: tauri::AppHandle, ativo: bool) {
+    app.state::<GestoAtivo>().0.store(ativo, Ordering::Relaxed);
+    if let Some(item) = app.state::<ItemGestos>().0.lock().unwrap().as_ref() {
+        let _ = item.set_checked(ativo);
+    }
+    let _ = app.emit("gestos", ativo);
+}
+
+/// "Teko, autodestruir": fecha o app (e o servidor e a voz que ele abriu, no RunEvent::Exit).
+#[tauri::command]
+fn sair_teko(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 async fn voice_local_request(action: String, body: Vec<u8>) -> Result<Vec<u8>, String> {
     let (path, content_type) = match action.as_str() {
@@ -247,6 +266,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
+        .manage(ItemGestos(std::sync::Mutex::new(None)))
         .manage(ilha::AreaIlha::default())
         .manage(AuraVisivel { ligada: AtomicBool::new(true), item: std::sync::Mutex::new(None) })
         .manage(servicos::Servicos::default())
@@ -287,7 +307,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, definir_aura, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, definir_aura, definir_gestos, sair_teko, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -343,6 +363,7 @@ fn main() {
             let escuta_menu = escuta.clone();
             let estalo_menu = estalo.clone();
             let gestos_menu = gestos.clone();
+            *app.state::<ItemGestos>().0.lock().unwrap() = Some(gestos.clone());
             let ilha_menu = ilha_item.clone();
             let gesto_ativo_menu = Arc::clone(&gesto_ativo);
             // Ícone da barra no estilo do macOS (Bluetooth, Wi-Fi): desenho só em preto com fundo
