@@ -5,11 +5,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ilha;
+mod servicos;
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
@@ -214,6 +216,9 @@ fn main() {
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
         .manage(ilha::AreaIlha::default())
+        .manage(servicos::Servicos::default())
+        // Abrir junto com o Mac (LaunchAgent); liga e desliga no menu da barra.
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .on_window_event(move |window, event| {
             // Minimizar o mapa = voltar pro Teko: fecha a janela (o Destroyed abaixo traz a aura de volta).
             // No macOS nem sempre vem Resized ao minimizar; perder o foco sempre vem, então confere
@@ -267,6 +272,10 @@ fn main() {
         .setup(move |app| {
             app.global_shortcut().register(falar)?;
 
+            // Servidor e voz clonada: sobe o que não estiver no ar (sem travar a abertura).
+            let servicos_app = app.handle().clone();
+            std::thread::spawn(move || servicos::iniciar(&servicos_app.state::<servicos::Servicos>()));
+
             // Sem ícone no Dock: o Teko vive na barra de menu.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -291,8 +300,10 @@ fn main() {
             let ilha_item = CheckMenuItem::with_id(app, "ilha", "Mostrar ilha no notch", true, true, None::<&str>)?;
             let centralizar = MenuItem::with_id(app, "centralizar", "Centralizar aura", true, None::<&str>)?;
             let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
+            let junto = CheckMenuItem::with_id(app, "login", "Abrir junto com o Mac", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
+            let junto_menu = junto.clone();
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &centralizar, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &centralizar, &junto, &dica, &sair])?;
             let escuta_menu = escuta.clone();
             let estalo_menu = estalo.clone();
             let gestos_menu = gestos.clone();
@@ -308,6 +319,14 @@ fn main() {
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "sair" => app.exit(0),
+                    "login" => {
+                        let ligar = junto_menu.is_checked().unwrap_or(false);
+                        let r = if ligar { app.autolaunch().enable() } else { app.autolaunch().disable() };
+                        if let Err(err) = r {
+                            eprintln!("[Teko] abrir junto com o Mac: {err}");
+                            let _ = junto_menu.set_checked(!ligar);
+                        }
+                    }
                     "mapa" => {
                         if let Err(err) = open_context_map(app.clone()) {
                             eprintln!("[Teko] não consegui abrir o mapa: {err}");
@@ -336,6 +355,12 @@ fn main() {
                 .build(app)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("erro ao iniciar o Teko");
+        .build(tauri::generate_context!())
+        .expect("erro ao iniciar o Teko")
+        .run(|app, evento| {
+            // Saindo: encerra o servidor e a voz que este app abriu.
+            if let tauri::RunEvent::Exit = evento {
+                servicos::encerrar(&app.state::<servicos::Servicos>());
+            }
+        });
 }
