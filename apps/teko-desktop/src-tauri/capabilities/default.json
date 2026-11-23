@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "A aura escuta eventos do app (atalho de falar), fala com o Teko local e abre o mapa. Nada de arquivos ou shell.",
+  "description": "A aura escuta eventos do app (atalho de falar, Esc), fala com o Teko local, abre o mapa e liga/desliga o Esc durante a conversa. Nada de arquivos ou shell.",
   "windows": [
     "aura"
   ],
   "permissions": [
     "core:event:default",
     "allow-voice-local-request",
-    "allow-open-context-map"
+    "allow-open-context-map",
+    "allow-definir-esc"
   ]
 }

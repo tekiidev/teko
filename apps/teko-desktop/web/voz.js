@@ -288,7 +288,31 @@ async function conferirTeko(wav) {
 
 // ---------- gravação do comando ----------
 
+// ---------- Esc cancela a conversa ----------
+// O atalho global de Esc só fica ligado enquanto há conversa (o Rust registra e solta).
+let escAtivo = false;
+function definirEsc(ligado) {
+  if (ligado === escAtivo) return;
+  escAtivo = ligado;
+  window.__TAURI__?.core?.invoke('definir_esc', { ativo: ligado }).catch((err) => console.warn('[Teko] Esc:', err));
+}
+
+/** Esc: para a fala, descarta o que está em andamento e volta a esperar "Teko". */
+function cancelarConversa() {
+  if (modo !== 'gravando' && modo !== 'ocupado') return definirEsc(false);
+  ciclo += 1; // respostas e falas em andamento deste ciclo são ignoradas
+  pararFala();
+  gravacao = null;
+  trecho = null;
+  ativo = null;
+  modo = 'parado';
+  aura.estado = 'parado';
+  definirEsc(false);
+  ajustarMic().then(() => mostrar('teko', 'Conversa cancelada. Diga “Teko” quando precisar.', 2500));
+}
+
 function comecarGravacao({ auto, seguimento = false }) {
+  definirEsc(true);
   pararFala();
   gravacao = { pedacos: [], inicio: performance.now(), auto, seguimento, falou: false, silencio: 0 };
   modo = 'gravando';
@@ -316,6 +340,7 @@ function gravarQuadro(quadro, v) {
 }
 
 function cancelarGravacao(aviso = '') {
+  definirEsc(false);
   gravacao = null;
   ativo = null;
   modo = 'parado';
@@ -362,6 +387,7 @@ async function terminarGravacao() {
 // ---------- resposta ----------
 
 async function responder(texto, meu) {
+  definirEsc(true);
   modo = 'ocupado';
   aura.estado = 'pensando';
   // Em modo ocupado os quadros do microfone são ignorados: ele não ouve a si mesmo.
@@ -396,6 +422,7 @@ function fim(meu, seguir = false) {
     }, VAD.respiroSeguimento);
     return;
   }
+  definirEsc(false);
   modo = 'parado';
   aura.estado = 'parado';
   ajustarMic();
@@ -647,13 +674,14 @@ async function ligarGestos() {
     mostrar('teko', 'Gestos prontos. Junte as mãos abertas e afaste para abrir o mapa.');
     statusGesto('Gestos ligados · mostre as duas mãos');
 
-    // ~8 quadros por segundo bastam pra gesto, e o detector pausa enquanto o Teko ouve,
-    // pensa ou fala: a GPU fica livre pra transcrição e pra voz (a 60 quadros/s ele usava
-    // ~80% da GPU e atrasava a fala).
+    // ~8 quadros por segundo bastam pra gesto (a 60 quadros/s ele usava ~80% da GPU e
+    // atrasava a fala); durante a conversa cai pra ~4 quadros/s.
     let ultimaDeteccao = 0;
     const animate = async () => {
       const agora = performance.now();
-      const pausado = modo === 'ocupado' || modo === 'gravando' || agora - ultimaDeteccao < 120;
+      // Na conversa os gestos continuam, só mais devagar (~4 quadros/s) pra não disputar a GPU com a voz.
+      const emConversa = modo === 'ocupado' || modo === 'gravando';
+      const pausado = agora - ultimaDeteccao < (emConversa ? 250 : 120);
       if (!gestosSolicitados || !gestosLandmarker || video.readyState < 2 || pausado) {
         if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
         return;
@@ -748,6 +776,7 @@ if (window.__TAURI__) {
   listen('falar', ({ payload }) => (payload ? apertou() : soltou()));
   listen('escuta', ({ payload }) => mudarEscuta(Boolean(payload)));
   listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
+  listen('cancelar', () => cancelarConversa());
   listen('mapa-aberto', () => desligarGestos(true));
 } else {
   // Fora do Tauri (navegador, pra testar): barra de espaço faz o papel do atalho.

@@ -70,6 +70,21 @@ fn open_context_map(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
+/// Esc cancela a conversa. Só fica registrado enquanto há conversa: um atalho global
+/// com Esc roubaria a tecla de todos os outros apps.
+#[tauri::command]
+fn definir_esc(app: tauri::AppHandle, ativo: bool) -> Result<(), String> {
+    let esc = Shortcut::new(None, Code::Escape);
+    let atalhos = app.global_shortcut();
+    let registrado = atalhos.is_registered(esc);
+    if ativo && !registrado {
+        atalhos.register(esc).map_err(|err| err.to_string())?;
+    } else if !ativo && registrado {
+        atalhos.unregister(esc).map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn close_context_map(window: tauri::WebviewWindow) -> Result<(), String> {
     window.close().map_err(|err| err.to_string())
@@ -118,13 +133,17 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
                     if shortcut == &falar {
                         let apertado = event.state() == ShortcutState::Pressed;
                         let _ = app.emit("falar", apertado);
+                    } else if shortcut == &Shortcut::new(None, Code::Escape)
+                        && event.state() == ShortcutState::Pressed
+                    {
+                        let _ = app.emit("cancelar", ());
                     }
                 })
                 .build(),

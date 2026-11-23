@@ -4,7 +4,7 @@ fn main() {
     // mapa carrega do Teko local por URL (origem "remota") e precisa disso pra
     // conseguir chamar o close_context_map.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
-        tauri_build::AppManifest::new().commands(&["voice_local_request", "open_context_map", "close_context_map"]),
+        tauri_build::AppManifest::new().commands(&["voice_local_request", "open_context_map", "close_context_map", "definir_esc"]),
     ))
     .expect("falha no tauri-build");
 }
