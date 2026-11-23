@@ -26,7 +26,7 @@ const legenda = document.getElementById('legenda');
 const VAD = {
   inicio: 0.015, // volume mínimo pra considerar fala
   fimTrecho: 7, // quadros de silêncio que fecham um trecho na vigia (~0,6 s)
-  fimComando: 14, // no comando, espera mais (~1,2 s) pra você terminar de falar
+  fimComando: 9, // no comando, ~0,75 s de silêncio já fecha (antes 1,2 s)
   preRoll: 4, // quadros guardados antes da fala começar (não cortar o "T" do Teko)
   maxTrecho: 6000, // ms: trecho de vigia mais longo que isso é descartado
   maxComando: 15000,
@@ -432,12 +432,22 @@ async function perguntar(texto, meu) {
   return resposta;
 }
 
-/** Quebra em frases (juntando as muito curtas) pra começar a falar antes de gerar tudo. */
+/**
+ * Quebra em frases pra começar a falar antes de gerar tudo.
+ * A primeira fica sozinha e curta (sai rápido); as seguintes juntam as muito curtas.
+ */
 function frases(texto) {
-  const partes = texto.match(/[^.!?…]+[.!?…]+["')\]]*|[^.!?…]+$/g) || [texto];
-  const out = [];
-  for (const p of partes.map((x) => x.trim()).filter(Boolean)) {
-    if (out.length && (out[out.length - 1].length < 25 || p.length < 15) && out[out.length - 1].length + p.length < 220) {
+  const partes = (texto.match(/[^.!?…]+[.!?…]+["')\]]*|[^.!?…]+$/g) || [texto]).map((x) => x.trim()).filter(Boolean);
+  if (!partes.length) return [texto];
+  // Primeira frase longa: corta na primeira vírgula, pra voz começar logo.
+  const primeira = partes.shift();
+  const virgula = primeira.indexOf(', ');
+  const out = primeira.length > 60 && virgula > 8 && virgula < 90
+    ? [primeira.slice(0, virgula + 1), primeira.slice(virgula + 2)]
+    : [primeira];
+  for (const p of partes) {
+    const ultima = out[out.length - 1];
+    if (out.length > 1 && (ultima.length < 25 || p.length < 15) && ultima.length + p.length < 220) {
       out[out.length - 1] += ` ${p}`;
     } else out.push(p);
   }
@@ -637,11 +647,18 @@ async function ligarGestos() {
     mostrar('teko', 'Gestos prontos. Junte as mãos abertas e afaste para abrir o mapa.');
     statusGesto('Gestos ligados · mostre as duas mãos');
 
+    // ~8 quadros por segundo bastam pra gesto, e o detector pausa enquanto o Teko ouve,
+    // pensa ou fala: a GPU fica livre pra transcrição e pra voz (a 60 quadros/s ele usava
+    // ~80% da GPU e atrasava a fala).
+    let ultimaDeteccao = 0;
     const animate = async () => {
-      if (!gestosSolicitados || !gestosLandmarker || video.readyState < 2) {
+      const agora = performance.now();
+      const pausado = modo === 'ocupado' || modo === 'gravando' || agora - ultimaDeteccao < 120;
+      if (!gestosSolicitados || !gestosLandmarker || video.readyState < 2 || pausado) {
         if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
         return;
       }
+      ultimaDeteccao = agora;
       try {
         const timestamp = performance.now();
         if (previewCtx && preview && video.readyState >= 2 && timestamp - ultimoQuadroPrevia > 50) {
