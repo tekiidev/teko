@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { guardarAntes } from '../undo.js';
 
 const IGNORE = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', 'coverage',
@@ -98,7 +99,9 @@ export async function writeFile(args: any = {}, ctx) {
   if (!target) throw new Error('informe o path do arquivo');
   const abs = resolveInside(ctx.root, target);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const depois = guardarAntes({ sessionId: ctx.sessionId, root: ctx.root, abs });
   fs.writeFileSync(abs, String(content), 'utf8');
+  depois(String(content));
   return { ok: true, output: `escrito ${Buffer.byteLength(String(content))} bytes em ${target}` };
 }
 
@@ -114,6 +117,8 @@ export async function editFile(args: any = {}, ctx) {
     throw new Error(`trecho aparece ${occurrences} vezes; inclua mais contexto ou passe all:true`);
   }
   const next = all ? text.split(from).join(to) : text.replace(from, to);
+  const depois = guardarAntes({ sessionId: ctx.sessionId, root: ctx.root, abs });
   fs.writeFileSync(abs, next, 'utf8');
+  depois(next);
   return { ok: true, output: `editado ${target} (${occurrences} ocorrência(s))` };
 }

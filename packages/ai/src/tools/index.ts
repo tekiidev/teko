@@ -3,6 +3,7 @@ import { grep } from './search.js';
 import { runCommand } from './shell.js';
 import { delegateAgent, findClaude } from './agent.js';
 import { openApp } from './apps.js';
+import { desfazer } from '../undo.js';
 import { search } from '../search-index.js';
 import { getSkill, renderSkill, listSkills } from '../skills.js';
 
@@ -161,6 +162,18 @@ export const TOOLS = [
     system: true,
     run: openApp,
     preview: (args) => `abrir ${args.name}`,
+  },
+  {
+    name: 'undo_changes',
+    description:
+      'Desfaz as últimas alterações de arquivo feitas pela IA nesta conversa (write_file/edit_file). Use quando o usuário pedir pra desfazer ou voltar. Não mexe em arquivo que o usuário alterou depois.',
+    parameters: {
+      type: 'object',
+      properties: { n: int('quantas alterações desfazer, da mais recente pra trás (padrão 1, máx 20)') },
+    },
+    requiresApproval: true,
+    run: (args, ctx) => desfazer({ sessionId: ctx.sessionId, root: ctx.root, n: args.n || 1 }),
+    preview: (args) => `desfazer ${args.n || 1} alteração(ões) de arquivo desta conversa`,
   },
   {
     name: 'use_skill',

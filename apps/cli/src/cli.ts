@@ -10,6 +10,7 @@ import { listSkills, getSkill } from '@teko/ai/skills';
 import { resolveApproval } from '@teko/ai/approvals';
 import { ajudaTexto } from '@teko/ai/help';
 import { contarConversas, limparConversas, type Alvo } from '@teko/ai/cleanup';
+import { desfazer, previaDesfazer } from '@teko/ai/undo';
 import { escolher, confirmar } from './select.js';
 import { banner, c, fmtCost, fmtTokens } from './ui.js';
 
@@ -39,6 +40,7 @@ ${c.accent('Na conversa')}
   /projeto <slug>     ${c.dim('/project')}                   usa um projeto (nenhum = sem projeto)
   /nova               ${c.dim('/new /clear')}                conversa nova
   /limpar             ${c.dim('/apagar')}                    apaga conversas salvas (pede confirmação)
+  /desfazer [n]       ${c.dim('/undo')}                      desfaz o que a IA escreveu nesta conversa
   /uso                ${c.dim('/usage /cost')}               tokens, custo e economia
   /skills                                        lista as skills
   /semcache           ${c.dim('/nocache')}                   liga/desliga o cache local
@@ -62,6 +64,7 @@ const ALIASES: Record<string, string> = {
   projeto: 'projeto', project: 'projeto', projetos: 'projeto', projects: 'projeto',
   semcache: 'semcache', nocache: 'semcache',
   limpar: 'limpar', apagar: 'limpar',
+  desfazer: 'desfazer', undo: 'desfazer',
 };
 
 /** Ajuda do terminal + tudo que dá pra fazer no Teko (voz, gestos, mapa), da mesma fonte do mapa. */
@@ -374,6 +377,17 @@ async function chat(state: State) {
       if (cmd === 'nova') { state.sessionId = null; console.log(c.dim('  conversa nova\n')); continue; }
       if (cmd === 'uso') { printUsage(); continue; }
       if (cmd === 'limpar') { await limpar(state, arg); continue; }
+      if (cmd === 'desfazer') {
+        const root = state.projectId ? db.prepare('SELECT path FROM projects WHERE id = ?').get(state.projectId)?.path : null;
+        const n = Math.max(1, Number(arg) || 1);
+        const lista = root && state.sessionId ? previaDesfazer({ sessionId: state.sessionId, root, n }) : [];
+        if (!lista.length) { console.log(c.dim('  nada pra desfazer nesta conversa\n')); continue; }
+        for (const l of lista) console.log(c.muted(`  ${l}`));
+        if (!(await confirmar('Desfazer isso?', { sim: 'Sim, desfazer', nao: 'Não' }))) { console.log(''); continue; }
+        const r = desfazer({ sessionId: state.sessionId, root, n });
+        console.log((r.ok ? c.green : c.amber)(r.output.split('\n').map((l) => `  ${l}`).join('\n')) + '\n');
+        continue;
+      }
       if (cmd === 'skills') { printSkills(); continue; }
       if (cmd === 'semcache') {
         state.noCache = !state.noCache;
