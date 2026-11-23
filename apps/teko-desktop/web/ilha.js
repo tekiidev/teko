@@ -33,8 +33,10 @@ function tamanho() {
     const extra = temLegenda ? Math.min(110, legenda.scrollHeight + 2) : 0;
     return { w: Math.max(base + 100, LARGURA_ATIVA), h: notch.altura + extra };
   }
-  // Parada: no notch, do tamanho dele; sem notch, uma faixa fina pra achar com o mouse.
-  return notch.tem ? { w: base, h: notch.altura } : { w: base, h: 8 };
+  // Parada: um pouco menor que o notch, escondida inteira atrás dele. Em tela LCD o preto
+  // da tela é mais claro que o notch físico; assim nenhuma borda aparece em volta.
+  // Sem notch, uma faixa fina pra achar com o mouse.
+  return notch.tem ? { w: base - 8, h: notch.altura - 3 } : { w: base, h: 8 };
 }
 
 function redesenhar() {
