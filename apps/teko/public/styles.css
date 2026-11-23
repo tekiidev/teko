@@ -599,4 +599,5 @@ body::before {
   border: 2px solid var(--cyan); border-radius: 50%; box-shadow: 0 0 12px var(--accent-glow);
   transition: width .12s, height .12s, left .12s, top .12s, background .12s;
 }
+.map-cursor { --dwell: 0; background: conic-gradient(var(--accent) calc(var(--dwell) * 360deg), transparent 0); }
 .map-cursor.pinca { left: -6px; top: -6px; width: 12px; height: 12px; background: var(--accent); }

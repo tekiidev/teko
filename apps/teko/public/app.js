@@ -812,13 +812,22 @@ async function mountContextMap() {
       if (nav.pan.moveu) { view.x += dx; view.y += dy; requestFrame(); gestureStatus('Movendo o mapa'); }
       nav.pan.ultimo = p;
     } else {
-      // Soltou a pinça: se foi rápida e sem arrastar, é um clique no ponto embaixo do cursor.
-      if (nav.pan && !nav.pan.moveu && now - nav.pan.inicio < 700 && nav.cursor) {
-        const node = hitTest(nav.cursor);
-        if (node) { selectNode(node); gestureStatus(`Selecionado: ${node.label}`); }
-      }
       nav.pan = null;
       nav.zoomDist = 0;
+      // Selecionar: parar o cursor sobre um ponto ~1 s (anel de progresso no cursor).
+      const alvo = nav.cursor ? hitTest(nav.cursor) : null;
+      const el = $('#map-cursor');
+      if (!alvo) { nav.dwell = null; el?.style.setProperty('--dwell', '0'); }
+      else {
+        if (!nav.dwell || nav.dwell.id !== alvo.id) nav.dwell = { id: alvo.id, inicio: now, feito: false };
+        const progresso = Math.min(1, (now - nav.dwell.inicio) / 1000);
+        el?.style.setProperty('--dwell', String(progresso));
+        if (progresso >= 1 && !nav.dwell.feito) {
+          nav.dwell.feito = true;
+          selectNode(alvo);
+          gestureStatus(`Selecionado: ${alvo.label}`);
+        } else if (!nav.dwell.feito) gestureStatus(`Segura o cursor em ${alvo.label}…`);
+      }
     }
     nav.pinching = new Map([...ativos].map((i) => [i, true]));
     return pincas.length > 0;
@@ -829,13 +838,21 @@ async function mountContextMap() {
     if (hands.length >= 2) {
       const d = Math.hypot(hands[0][9].x - hands[1][9].x, hands[0][9].y - hands[1][9].y);
       view.lastPair = { d, at: now };
+      // Juntar e logo afastar (dentro de 1 s) = enquadrar a rede inteira.
+      if (d < 0.14) view.lastTogetherAt = now;
+      if (d > 0.35 && view.lastTogetherAt && now - view.lastTogetherAt < 1000 && now - (view.fitAt || 0) > 1500) {
+        view.fitAt = now; view.lastTogetherAt = 0; view.togetherSince = 0;
+        fitMap();
+        gestureStatus('Mapa enquadrado');
+        return;
+      }
       if (d > 0.3) view.apartAt = now;
       const recentlyApart = now - view.apartAt < 2500;
-      if (d < 0.12 && recentlyApart) return closeByGesture();
-      // Também fecha com as mãos juntas e paradas por meio segundo, sem precisar afastar antes.
+      if (d < 0.12 && recentlyApart && now - (view.fitAt || 0) > 1500) return closeByGesture();
+      // Também fecha com as mãos juntas e paradas por 1 segundo (menos que isso pode ser o começo do enquadrar).
       if (d < 0.14) {
         view.togetherSince ||= now;
-        if (now - view.togetherSince > 500) return closeByGesture();
+        if (now - view.togetherSince > 1000) return closeByGesture();
         gestureStatus('Segura as mãos juntas…');
         return;
       }
