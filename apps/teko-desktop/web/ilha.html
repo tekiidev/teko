@@ -26,7 +26,8 @@
     #ilha {
       position: absolute; top: 0; left: 50%; transform: translateX(-50%);
       width: 200px; height: var(--notch-h);
-      background: var(--preto); border-radius: 0 0 16px 16px;
+      /* Preto puro e opaco (sem nada translúcido por cima quando parada). */
+      background: #000; border-radius: 0 0 16px 16px; background-clip: padding-box;
       box-sizing: border-box; isolation: isolate;
       transition: width 380ms var(--mola), height 380ms var(--mola), border-radius 380ms var(--mola), box-shadow 300ms;
       display: flex; flex-direction: column;
@@ -37,6 +38,8 @@
     #ilha::before {
       content: ''; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; z-index: -1;
       background: conic-gradient(from var(--giro), transparent 0deg, transparent 200deg, var(--azul) 280deg, var(--gelo) 320deg, var(--azul) 345deg, transparent 360deg);
+      /* O LED não passa pela borda de cima (colada no topo da tela, ao lado do notch). */
+      clip-path: inset(3px -4px -4px -4px);
       -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
       opacity: 0; transition: opacity 260ms;
@@ -45,11 +48,12 @@
     @keyframes girar { to { --giro: 360deg; } }
     /* Você falando: o LED contorna e brilha mais quanto mais alto. */
     #ilha[data-estado="ouvindo"]::before { opacity: calc(0.55 + var(--vol) * 0.45); }
-    #ilha[data-estado="ouvindo"] { box-shadow: 0 0 calc(6px + var(--vol) * 22px) rgba(46, 155, 255, calc(0.18 + var(--vol) * 0.4)); }
+    /* Brilho só pra baixo (y positivo, espalhamento negativo): não clareia os lados do notch. */
+    #ilha[data-estado="ouvindo"] { box-shadow: 0 calc(6px + var(--vol) * 8px) calc(10px + var(--vol) * 18px) -6px rgba(46, 155, 255, calc(0.25 + var(--vol) * 0.45)); }
     /* Pensando: o brilho corre mais rápido e mais fraco. */
     #ilha[data-estado="pensando"]::before { opacity: .5; animation-duration: .9s; }
     /* Falando: brilho suave por baixo, que respira com a voz dele. */
-    #ilha[data-estado="falando"] { box-shadow: 0 2px calc(8px + var(--vol) * 18px) rgba(95, 212, 255, calc(0.12 + var(--vol) * 0.3)); }
+    #ilha[data-estado="falando"] { box-shadow: 0 calc(5px + var(--vol) * 6px) calc(10px + var(--vol) * 16px) -6px rgba(95, 212, 255, calc(0.15 + var(--vol) * 0.35)); }
 
     .linha { height: var(--notch-h); flex: 0 0 var(--notch-h); display: flex; align-items: center; justify-content: space-between; padding: 0 14px; box-sizing: border-box; }
     .lado { width: 22px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--ciano); opacity: 0; transition: opacity 220ms; }
