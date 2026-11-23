@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teko · ilha</title>
+  <style>
+    :root {
+      --preto: #000;
+      --azul: #2e9bff;
+      --ciano: #5fd4ff;
+      --gelo: #cfeaff;
+      --branco: #f2f7ff;
+      --apagado: #5a6d86;
+      --notch-w: 200px;
+      --notch-h: 32px;
+    }
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+    body { font: 500 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--branco); }
+
+    /* A pílula nasce do topo, colada no notch: cantos de cima retos, de baixo redondos. */
+    #ilha {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: var(--notch-w); height: var(--notch-h);
+      background: var(--preto); border-radius: 0 0 14px 14px;
+      box-sizing: border-box; overflow: hidden;
+      transition: width 260ms cubic-bezier(.2,.9,.3,1.2), height 260ms cubic-bezier(.2,.9,.3,1.2), border-radius 260ms;
+      display: flex; flex-direction: column;
+    }
+    /* Sem notch, uma pílula pequena e discreta. */
+    body.sem-notch #ilha { border-radius: 0 0 12px 12px; }
+
+    .linha { height: var(--notch-h); flex: 0 0 var(--notch-h); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
+    .ponto { width: 6px; height: 6px; border-radius: 50%; background: var(--apagado); opacity: 0; transition: opacity 200ms, background 200ms; }
+    body.escutando .ponto { opacity: .9; }
+
+    /* Onda de pixels ao lado do notch quando ele ouve, pensa ou fala. */
+    .onda { display: flex; gap: 2px; align-items: center; height: 14px; opacity: 0; transition: opacity 200ms; }
+    .onda i { width: 3px; height: 3px; background: var(--ciano); display: block; }
+    #ilha.ativa .onda { opacity: 1; }
+    #ilha[data-estado="ouvindo"] .onda i { background: var(--gelo); animation: pulo 700ms ease-in-out infinite; }
+    #ilha[data-estado="pensando"] .onda i { background: var(--azul); animation: giro 900ms linear infinite; }
+    #ilha[data-estado="falando"] .onda i { background: var(--branco); animation: pulo 420ms ease-in-out infinite; }
+    .onda i:nth-child(2) { animation-delay: 80ms !important; }
+    .onda i:nth-child(3) { animation-delay: 160ms !important; }
+    .onda i:nth-child(4) { animation-delay: 240ms !important; }
+    @keyframes pulo { 0%,100% { height: 3px; } 50% { height: 13px; } }
+    @keyframes giro { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
+    .estado { color: var(--ciano); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; opacity: 0; transition: opacity 200ms; }
+    #ilha.ativa .estado { opacity: 1; }
+
+    #legenda {
+      padding: 2px 16px 12px; color: var(--branco); font-size: 12.5px; line-height: 1.45;
+      max-height: 96px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+      opacity: 0; transition: opacity 200ms;
+    }
+    #legenda .quem { color: var(--ciano); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; display: block; }
+    #ilha.com-legenda #legenda { opacity: 1; }
+
+    /* Painel ao passar o mouse. */
+    #painel { padding: 4px 14px 12px; display: none; flex-direction: column; gap: 9px; }
+    #ilha.aberta #painel { display: flex; }
+    #ilha.aberta #legenda { display: none; }
+    .acoes { display: flex; gap: 6px; }
+    .acoes button {
+      flex: 1; height: 30px; border: 1px solid rgba(95,212,255,.25); border-radius: 9px;
+      background: rgba(46,155,255,.08); color: var(--branco); font: inherit; cursor: pointer;
+    }
+    .acoes button:hover { background: rgba(46,155,255,.22); border-color: rgba(95,212,255,.6); }
+    #pedido {
+      height: 32px; border: 1px solid rgba(95,212,255,.25); border-radius: 9px; padding: 0 10px;
+      background: #05070a; color: var(--branco); font: inherit; outline: none;
+    }
+    #pedido:focus { border-color: var(--ciano); }
+    #pedido::placeholder { color: var(--apagado); }
+    .rodape { display: flex; justify-content: space-between; color: var(--apagado); font-size: 10.5px; }
+    .rodape b { color: var(--gelo); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div id="ilha" data-estado="parado">
+    <div class="linha">
+      <div class="onda" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <span class="ponto" title="Escutando “Teko”"></span>
+      <span class="estado" id="estado"></span>
+    </div>
+    <div id="legenda" aria-live="polite"></div>
+    <div id="painel">
+      <div class="acoes">
+        <button id="falar" type="button">🎙 Falar</button>
+        <button id="mapa" type="button">◎ Mapa</button>
+        <button id="cancelar" type="button">✕ Parar</button>
+      </div>
+      <input id="pedido" type="text" placeholder="Peça algo ao Teko e aperte Enter" autocomplete="off" spellcheck="false" />
+      <div class="rodape"><span>hoje <b id="gasto">…</b></span><span id="dica">⌥ Espaço também fala</span></div>
+    </div>
+  </div>
+  <script type="module" src="ilha.js"></script>
+</body>
+</html>

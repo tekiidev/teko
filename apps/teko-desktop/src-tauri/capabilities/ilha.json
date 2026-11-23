@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ilha",
+  "description": "A ilha do notch espelha o estado da aura por eventos, abre o mapa e avisa o tamanho da pílula. Nada de arquivos, shell ou microfone.",
+  "windows": [
+    "ilha"
+  ],
+  "permissions": [
+    "core:event:default",
+    "allow-open-context-map",
+    "allow-ilha-info",
+    "allow-ilha-area"
+  ]
+}

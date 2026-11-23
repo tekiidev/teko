@@ -88,6 +88,7 @@ Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, 
 
 - "Teko, qual a capital do Maranhão?" numa frase só já vai direto
 - "Teko" sozinho: um bipe, e ele espera você falar (termina quando você para)
+- **Ilha no notch**: no topo da tela, colada no notch da câmera. Parada, some no notch; em conversa, cresce com o estado e a legenda; com o mouse em cima, abre Falar, Mapa, Parar, um campo pra pedir digitando e o gasto do dia. Sem notch, vira uma pílula pequena no topo. Liga e desliga no menu da barra
 
 ```bash
 brew install whisper-cpp rust   # uma vez

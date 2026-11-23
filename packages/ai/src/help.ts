@@ -13,6 +13,7 @@ export const AJUDA: SecaoAjuda[] = [
       { como: '"Teko"', faz: 'chama o Teko (bipe), depois é só falar o pedido' },
       { como: '"Teko, <pergunta>"', faz: 'pergunta direto, numa frase só' },
       { como: 'segurar ⌥ Espaço', faz: 'fala enquanto segura e envia ao soltar' },
+      { como: 'mouse no notch', faz: 'abre a ilha: Falar, Mapa, Parar e um campo pra pedir digitando' },
       { como: 'continuar falando', faz: 'depois da resposta ele segue ouvindo ~8 s sem precisar do "Teko"' },
       { como: '"tchau" · "valeu" · "é isso"', faz: 'encerra a conversa' },
       { como: 'Esc', faz: 'cancela a conversa (para a fala e descarta a resposta)' },
