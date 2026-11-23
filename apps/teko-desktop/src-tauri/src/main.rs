@@ -139,6 +139,61 @@ fn definir_esc(app: tauri::AppHandle, ativo: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Tamanho padrão da aura (o mesmo do tauri.conf.json).
+const AURA_LARGURA: f64 = 460.0;
+const AURA_ALTURA: f64 = 520.0;
+
+#[derive(serde::Serialize)]
+struct GeometriaAura {
+    x: f64,
+    y: f64,
+    largura: f64,
+    altura: f64,
+    tela_x: f64,
+    tela_y: f64,
+    tela_largura: f64,
+    tela_altura: f64,
+}
+
+/// Onde a aura está e o tamanho da tela dela (em pontos), pra mover com gesto.
+#[tauri::command]
+fn aura_geometria(window: tauri::WebviewWindow) -> Result<GeometriaAura, String> {
+    let escala = window.scale_factor().map_err(|e| e.to_string())?;
+    let pos = window.outer_position().map_err(|e| e.to_string())?.to_logical::<f64>(escala);
+    let tam = window.outer_size().map_err(|e| e.to_string())?.to_logical::<f64>(escala);
+    let tela = window.current_monitor().map_err(|e| e.to_string())?.ok_or("sem tela")?;
+    let tela_pos = tela.position().to_logical::<f64>(escala);
+    let tela_tam = tela.size().to_logical::<f64>(escala);
+    Ok(GeometriaAura {
+        x: pos.x, y: pos.y, largura: tam.width, altura: tam.height,
+        tela_x: tela_pos.x, tela_y: tela_pos.y, tela_largura: tela_tam.width, tela_altura: tela_tam.height,
+    })
+}
+
+/// Move e redimensiona a aura, sem deixar ela sair da tela nem ficar minúscula ou gigante.
+#[tauri::command]
+fn posicionar_aura(window: tauri::WebviewWindow, x: f64, y: f64, largura: f64, altura: f64) -> Result<(), String> {
+    let escala = window.scale_factor().map_err(|e| e.to_string())?;
+    let tela = window.current_monitor().map_err(|e| e.to_string())?.ok_or("sem tela")?;
+    let tp = tela.position().to_logical::<f64>(escala);
+    let tt = tela.size().to_logical::<f64>(escala);
+    let w = largura.clamp(AURA_LARGURA * 0.5, AURA_LARGURA * 1.8).min(tt.width);
+    let h = altura.clamp(AURA_ALTURA * 0.5, AURA_ALTURA * 1.8).min(tt.height);
+    let x = x.clamp(tp.x - w * 0.3, tp.x + tt.width - w * 0.7);
+    let y = y.clamp(tp.y, tp.y + tt.height - h * 0.5);
+    window.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
+    window.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())
+}
+
+/// Volta a aura pro meio da tela, no tamanho padrão.
+fn centralizar_aura(app: &tauri::AppHandle) {
+    if let Some(aura) = app.get_webview_window("aura") {
+        let _ = aura.set_size(tauri::LogicalSize::new(AURA_LARGURA, AURA_ALTURA));
+        let _ = aura.center();
+        let _ = app.emit_to("aura", "aura-centralizada", ());
+    }
+}
+
 #[tauri::command]
 fn close_context_map(window: tauri::WebviewWindow) -> Result<(), String> {
     window.close().map_err(|err| err.to_string())
@@ -188,7 +243,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, ilha::ilha_info, ilha::ilha_area])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, ilha::ilha_info, ilha::ilha_area])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -227,9 +282,10 @@ fn main() {
             let mapa = MenuItem::with_id(app, "mapa", "Abrir mapa neural", true, None::<&str>)?;
             let gestos = CheckMenuItem::with_id(app, "gestos", "Reconhecer gesto T automaticamente (câmera)", true, true, None::<&str>)?;
             let ilha_item = CheckMenuItem::with_id(app, "ilha", "Mostrar ilha no notch", true, true, None::<&str>)?;
+            let centralizar = MenuItem::with_id(app, "centralizar", "Centralizar aura", true, None::<&str>)?;
             let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &mapa, &gestos, &ilha_item, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &mapa, &gestos, &ilha_item, &centralizar, &dica, &sair])?;
             let escuta_menu = escuta.clone();
             let gestos_menu = gestos.clone();
             let ilha_menu = ilha_item.clone();
@@ -253,6 +309,7 @@ fn main() {
                         let ligada = escuta_menu.is_checked().unwrap_or(false);
                         let _ = app.emit("escuta", ligada);
                     }
+                    "centralizar" => centralizar_aura(app),
                     "ilha" => {
                         if let Some(janela) = app.get_webview_window("ilha") {
                             let _ = if ilha_menu.is_checked().unwrap_or(true) { janela.show() } else { janela.hide() };

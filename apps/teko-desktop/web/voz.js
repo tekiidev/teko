@@ -25,7 +25,8 @@ const avisarIlha = (nome, dado) => window.__TAURI__?.event?.emit(nome, dado).cat
 const aura = {
   get estado() { return auraTela.estado; },
   set estado(valor) {
-    if (auraTela.estado !== valor) avisarIlha('teko-estado', valor);
+    // 'gesto' é só visual (aura sendo movida): a ilha não precisa saber.
+    if (auraTela.estado !== valor && valor !== 'gesto') avisarIlha('teko-estado', valor);
     auraTela.estado = valor;
   },
   formaT: (v) => auraTela.formaT(v),
@@ -749,6 +750,89 @@ async function desligarGestos(silencioso = false) {
   if (!silencioso) mostrar('teko', 'Gesto T desligado; câmera fechada.', 3000);
 }
 
+// ---------- mover e redimensionar a aura com pinça ----------
+// Uma mão em pinça segura a aura e arrasta; as duas em pinça afastando ou aproximando
+// mudam o tamanho. Segurar ~0,25 s antes de pegar evita mexer sem querer.
+const AURA_GUARDADA = 'teko.aura.geo';
+const GANHO_MOVER = 1.6; // a mão anda pouco na frente da câmera; a aura anda mais na tela
+let pegada = null; // { tipo, geo, p0, d0, estadoAntes }
+let pincaTipo = null;
+let pincaDesde = 0;
+let posicionando = false;
+
+const emPinca = (m) => Math.hypot(m[4].x - m[8].x, m[4].y - m[8].y) < 0.05;
+const pontoPinca = (m) => ({ x: (m[4].x + m[8].x) / 2, y: (m[4].y + m[8].y) / 2 });
+
+async function aplicarGeo(geo) {
+  if (posicionando) return; // ainda aplicando o quadro anterior
+  posicionando = true;
+  try {
+    await window.__TAURI__.core.invoke('posicionar_aura', { x: geo.x, y: geo.y, largura: geo.largura, altura: geo.altura });
+  } catch (err) {
+    console.warn('[Teko] mover aura:', err);
+  } finally {
+    posicionando = false;
+  }
+}
+
+async function soltarAura() {
+  if (!pegada) return;
+  const antes = pegada.estadoAntes;
+  pegada = null;
+  if (aura.estado === 'gesto') aura.estado = antes || 'parado';
+  statusGesto('');
+  try {
+    const geo = await window.__TAURI__.core.invoke('aura_geometria');
+    localStorage.setItem(AURA_GUARDADA, JSON.stringify({ x: geo.x, y: geo.y, largura: geo.largura, altura: geo.altura }));
+  } catch { /* sem armazenamento: só não lembra a posição */ }
+}
+
+/** Trata a pinça neste quadro. Devolve true quando a pinça é dela (o resto dos gestos espera). */
+async function tratarPinca(maos, agora) {
+  const pincando = maos.filter(emPinca);
+  const tipo = pincando.length >= 2 ? 'tamanho' : pincando.length === 1 ? 'mover' : null;
+  if (tipo !== pincaTipo) {
+    await soltarAura();
+    pincaTipo = tipo;
+    pincaDesde = agora;
+  }
+  if (!tipo) return false;
+  if (!pegada) {
+    if (agora - pincaDesde < 250) return true;
+    let geo;
+    try { geo = await window.__TAURI__.core.invoke('aura_geometria'); } catch { return true; }
+    const [a, b] = pincando.map(pontoPinca);
+    pegada = { tipo, geo, p0: a, d0: b ? Math.hypot(a.x - b.x, a.y - b.y) : 0, estadoAntes: aura.estado };
+    if (aura.estado === 'parado') aura.estado = 'gesto'; // mostra a aura enquanto segura
+    statusGesto(tipo === 'mover' ? 'Movendo a aura · solte a pinça pra largar' : 'Mudando o tamanho · afaste ou aproxime as mãos');
+    return true;
+  }
+  const { geo } = pegada;
+  if (pegada.tipo === 'mover') {
+    const p = pontoPinca(pincando[0]);
+    // A câmera vê espelhado: mão pra sua direita = x menor na imagem.
+    const dx = -(p.x - pegada.p0.x) * geo.tela_largura * GANHO_MOVER;
+    const dy = (p.y - pegada.p0.y) * geo.tela_altura * GANHO_MOVER;
+    await aplicarGeo({ x: geo.x + dx, y: geo.y + dy, largura: geo.largura, altura: geo.altura });
+  } else {
+    const [a, b] = pincando.map(pontoPinca);
+    const escala = Math.min(1.8, Math.max(0.5, Math.hypot(a.x - b.x, a.y - b.y) / Math.max(pegada.d0, 0.01)));
+    const largura = geo.largura * escala;
+    const altura = geo.altura * escala;
+    // Cresce a partir do centro: o meio da aura fica no lugar.
+    await aplicarGeo({ x: geo.x + (geo.largura - largura) / 2, y: geo.y + (geo.altura - altura) / 2, largura, altura });
+  }
+  return true;
+}
+
+/** Volta pra onde você deixou a aura da última vez. */
+async function restaurarAura() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(AURA_GUARDADA) || 'null');
+    if (salvo && Number.isFinite(salvo.x)) await aplicarGeo(salvo);
+  } catch { /* nada salvo */ }
+}
+
 async function ligarGestos() {
   if (gestosStream) return;
   gestosSolicitados = true;
@@ -800,7 +884,8 @@ async function ligarGestos() {
       const agora = performance.now();
       // Na conversa os gestos continuam, só mais devagar (~4 quadros/s) pra não disputar a GPU com a voz.
       const emConversa = modo === 'ocupado' || modo === 'gravando';
-      const pausado = agora - ultimaDeteccao < (emConversa ? 250 : 120);
+      // Segurando a aura, mais quadros por segundo pra ela seguir a mão sem tranco.
+      const pausado = agora - ultimaDeteccao < (pegada ? 45 : emConversa ? 250 : 120);
       if (!gestosSolicitados || !gestosLandmarker || video.readyState < 2 || pausado) {
         if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
         return;
@@ -820,6 +905,11 @@ async function ligarGestos() {
         // Pinça (polegar encostando no indicador) confirma uma aprovação pendente.
         if (aprovacao && detectedHands.some((m) => Math.hypot(m[4].x - m[8].x, m[4].y - m[8].y) < 0.045)) {
           aprovacao.responder(true);
+        }
+        // Pinça sem aprovação pendente = mover ou redimensionar a aura.
+        if (!aprovacao && !gestosMapaAberto && (await tratarPinca(detectedHands, performance.now()))) {
+          if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+          return;
         }
         const hands = detectedHands.filter((landmarks) => {
           const wrist = landmarks[0];
@@ -907,6 +997,9 @@ if (window.__TAURI__) {
   listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
   listen('cancelar', () => cancelarConversa());
   listen('mapa-aberto', () => desligarGestos(true));
+  // "Centralizar aura" no menu da barra: esquece a posição guardada.
+  listen('aura-centralizada', () => { try { localStorage.removeItem(AURA_GUARDADA); } catch { /* ok */ } });
+  restaurarAura();
   // A ilha abre depois da aura: quando ela avisa que está pronta, manda o estado atual.
   listen('ilha-pronta', () => { avisarIlha('teko-escuta', escuta); avisarIlha('teko-estado', aura.estado); });
   // Ilha do notch: botão Falar (ouve até você parar) e pedido digitado (mesmo fluxo da voz).
