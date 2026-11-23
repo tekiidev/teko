@@ -865,6 +865,33 @@ async function tratarPinca(maos, agora) {
   return true;
 }
 
+// Diagonal: mãos já separadas se afastando rápido em diagonais opostas (↖ ↘ ou ↗ ↙)
+// centraliza a aura no tamanho padrão. Mesmo gesto que abre a rede inteira no mapa.
+let historicoMaos = [];
+let diagonalEm = 0;
+
+/** Devolve true quando o gesto diagonal aconteceu neste quadro. */
+function gestoDiagonal(maos, agora) {
+  if (maos.length < 2) { historicoMaos = []; return false; }
+  const [esq, dir] = [maos[0][9], maos[1][9]].sort((p, q) => p.x - q.x);
+  const d = Math.hypot(esq.x - dir.x, esq.y - dir.y);
+  historicoMaos = historicoMaos.filter((h) => agora - h.t < 500);
+  historicoMaos.push({ t: agora, a: { x: esq.x, y: esq.y }, b: { x: dir.x, y: dir.y }, d });
+  const antigo = historicoMaos[0];
+  if (!antigo || agora - antigo.t < 150 || antigo.d < 0.2 || agora - diagonalEm < 1500) return false;
+  const da = { x: esq.x - antigo.a.x, y: esq.y - antigo.a.y };
+  const db = { x: dir.x - antigo.b.x, y: dir.y - antigo.b.y };
+  const diagonal = (v) => Math.min(Math.abs(v.x), Math.abs(v.y)) / Math.max(Math.abs(v.x), Math.abs(v.y), 1e-6) > 0.35;
+  const forte = (v) => Math.hypot(v.x, v.y) > 0.07;
+  if (!(forte(da) && forte(db) && diagonal(da) && diagonal(db) && da.x * db.x + da.y * db.y < 0 && d - antigo.d > 0.1)) return false;
+  diagonalEm = agora;
+  historicoMaos = [];
+  window.__TAURI__.core.invoke('aura_centralizar').catch((err) => console.warn('[Teko] centralizar aura:', err));
+  statusGesto('Aura no centro, tamanho padrão');
+  setTimeout(() => statusGesto(''), 1500);
+  return true;
+}
+
 /** Volta pra onde você deixou a aura da última vez. */
 async function restaurarAura() {
   try {
@@ -987,6 +1014,12 @@ async function ligarGestosAgora() {
         }
         // Pinça sem aprovação pendente = mover ou redimensionar a aura.
         if (!aprovacao && !gestosMapaAberto && (await tratarPinca(detectedHands, performance.now()))) {
+          if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
+          return;
+        }
+        // Diagonal centraliza a aura; desligado logo depois do T (aí descolar é abrir o mapa).
+        const depoisDoT = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500);
+        if (!depoisDoT && !gestosMapaAberto && gestoDiagonal(detectedHands, performance.now())) {
           if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
           return;
         }

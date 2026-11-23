@@ -28,7 +28,8 @@ export const AJUDA: SecaoAjuda[] = [
     itens: [
       { como: 'fazer um T com as mãos e descolar', faz: 'abre o mapa (o T não precisa ser perfeito; descolar um pouco já basta)' },
       { como: 'pinça com uma mão e arrastar', faz: 'move a aura pela tela (segure ~0,25 s pra pegar, solte pra largar)' },
-      { como: 'pinça com as duas mãos, afastar ou aproximar', faz: 'troca entre os 3 tamanhos da aura (pequena, padrão, grande); "Centralizar aura" no menu volta pro meio' },
+      { como: 'pinça com as duas mãos, afastar ou aproximar', faz: 'troca entre os 3 tamanhos da aura (pequena, padrão, grande)' },
+      { como: 'mãos separadas afastando na diagonal (↖ ↘)', faz: 'centraliza a aura no tamanho padrão (o mesmo que "Centralizar aura" no menu)' },
       { como: 'juntar as mãos e segurar meio segundo', faz: 'fecha o mapa (afastar e juntar também fecha)' },
       { como: 'mãos separadas se afastando na diagonal (no mapa)', faz: 'volta pra rede inteira ramificada (tira a seleção e enquadra)' },
       { como: 'pinça (polegar no indicador)', faz: 'confirma quando ele pergunta "Posso…?"' },
