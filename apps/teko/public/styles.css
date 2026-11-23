@@ -577,3 +577,18 @@ body::before {
 }
 .made-by img { height: 18px; width: auto; opacity: 0.85; transition: 0.15s; }
 .made-by:hover img { opacity: 1; filter: drop-shadow(0 0 8px var(--accent-glow)); }
+
+/* ---------- ajuda do mapa ---------- */
+.map-help {
+  position: absolute; top: 64px; right: 16px; z-index: 30;
+  width: min(560px, calc(100% - 32px)); max-height: calc(100% - 96px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--line-2); padding: 14px 16px;
+  clip-path: var(--cut); box-shadow: 0 0 32px var(--accent-glow);
+}
+.map-help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.map-help h3 { margin: 0; font-size: 15px; color: var(--text); }
+.map-help h4 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+.map-help dl { display: grid; grid-template-columns: minmax(150px, 40%) 1fr; gap: 4px 12px; margin: 0; font-size: 12.5px; }
+.map-help dt { font-family: var(--mono); color: var(--ice); }
+.map-help dd { margin: 0; color: var(--muted); }
+.context-map-page { position: relative; }

@@ -8,6 +8,7 @@ import { planRoute } from '@teko/ai/router';
 import { usageSummary } from '@teko/ai/usage';
 import { listSkills, getSkill } from '@teko/ai/skills';
 import { resolveApproval } from '@teko/ai/approvals';
+import { ajudaTexto } from '@teko/ai/help';
 import { banner, c, fmtCost, fmtTokens } from './ui.js';
 
 const HELP = `
@@ -56,6 +57,11 @@ const ALIASES: Record<string, string> = {
   projeto: 'projeto', project: 'projeto', projetos: 'projeto', projects: 'projeto',
   semcache: 'semcache', nocache: 'semcache',
 };
+
+/** Ajuda do terminal + tudo que dá pra fazer no Teko (voz, gestos, mapa), da mesma fonte do mapa. */
+function ajudaCompleta() {
+  return `${HELP}\n${c.white(c.bold('Tudo que dá pra fazer no Teko'))}\n\n${ajudaTexto({ titulo: (t) => c.accent(t), destaque: (t) => c.ice(t), dim: (t) => c.muted(t) })}\n`;
+}
 
 type State = {
   sessionId: string | null;
@@ -307,7 +313,7 @@ async function chat(state: State) {
       const cmd = ALIASES[typed.toLowerCase()] || typed;
       const arg = rest.join(' ').trim();
       if (cmd === 'sair') break;
-      if (cmd === 'ajuda') { console.log(HELP); continue; }
+      if (cmd === 'ajuda') { console.log(ajudaCompleta()); continue; }
       if (cmd === 'nova') { state.sessionId = null; console.log(c.dim('  conversa nova\n')); continue; }
       if (cmd === 'uso') { printUsage(); continue; }
       if (cmd === 'skills') { printSkills(); continue; }
@@ -378,7 +384,7 @@ async function chat(state: State) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.version) return console.log(APP_VERSION);
-  if (opts.help || opts.words[0] === 'ajuda') return console.log(HELP);
+  if (opts.help || ['ajuda', 'help'].includes(opts.words[0])) return console.log(ajudaCompleta());
 
   const project = opts.noProject ? null : findProject(opts.project || null);
   if (opts.project && !project) {
