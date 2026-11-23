@@ -1,10 +1,10 @@
 import { listFiles, readFile, writeFile, editFile } from './fs.js';
 import { grep } from './search.js';
 import { runCommand } from './shell.js';
-import { delegateAgent } from './agent.js';
+import { delegateAgent, findClaude } from './agent.js';
 import { openApp } from './apps.js';
 import { search } from '../search-index.js';
-import { getSkill, renderSkill } from '../skills.js';
+import { getSkill, renderSkill, listSkills } from '../skills.js';
 
 const str = (description) => ({ type: 'string', description });
 const int = (description) => ({ type: 'integer', description });
@@ -186,7 +186,38 @@ export const TOOLS = [
  * `systemOnly` deixa só as que não precisam de projeto (ex.: abrir aplicativo).
  */
 export function toolDefs({ readOnly = false, systemOnly = false } = {}) {
-  return TOOLS.filter((tool) => (!readOnly || !tool.requiresApproval) && (!systemOnly || (tool as any).system)).map(({ name, description, parameters }) => ({ name, description, parameters }));
+  const inuteis = ferramentasInuteis();
+  return TOOLS.filter((tool) => (!readOnly || !tool.requiresApproval) && (!systemOnly || (tool as any).system) && !inuteis.has(tool.name)).map(({ name, description, parameters }) => ({ name, description, parameters }));
+}
+
+/**
+ * Orçamento de ferramentas: cada definição custa tokens em toda chamada.
+ * Os cortes dependem só da máquina e do modelo (nunca da mensagem), pra o prefixo
+ * ferramentas + system continuar igual entre mensagens e o cache do provedor valer.
+ */
+function ferramentasInuteis() {
+  const fora = new Set<string>();
+  // Sem nenhuma skill instalada, use_skill não tem o que carregar.
+  try { if (!listSkills().length) fora.add('use_skill'); } catch { fora.add('use_skill'); }
+  // Sem o Claude Code no computador, delegar sempre falharia.
+  if (!findClaude()) fora.add('delegate_agent');
+  return fora;
+}
+
+/** Modelos locais (tag offline) recebem só o básico: ler, editar, abrir app e desfazer. */
+export const FERRAMENTAS_BASICAS = new Set(['list_files', 'read_file', 'grep', 'search_project', 'edit_file', 'write_file', 'open_app', 'undo_changes']);
+
+/** Tokens aproximados das definições (≈ 4 caracteres por token). */
+export const tokensDasFerramentas = (defs: any[] = []) => Math.ceil(JSON.stringify(defs).length / 4);
+
+/**
+ * Ferramentas pra um modelo específico da fila. Ferramentas já chamadas na conversa
+ * continuam (o histórico cita elas, e o modelo seguinte precisa reconhecer).
+ */
+export function toolsForModel(defs: any[] | null, tags: string[] = [], usadas: Set<string> = new Set()) {
+  if (!defs?.length) return defs;
+  if (!tags.includes('offline')) return defs;
+  return defs.filter((d) => FERRAMENTAS_BASICAS.has(d.name) || usadas.has(d.name));
 }
 
 export function getTool(name) {
