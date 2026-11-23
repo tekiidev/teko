@@ -4,7 +4,7 @@ import { IAIndisponivel, montarLista } from '@/lib/ai.ts';
 /**
  * POST /api/lista { texto } -> { itens }
  * Rota pública: limita tamanho do texto e quantas chamadas cada IP faz, e repassa
- * pro servidor privado do Cofu (onde mora a IA). Se ele falhar, responde 503
+ * pro serviço da IA (COFU_SERVER_URL). Se ele falhar, responde 503
  * e o app usa o leitor simples no aparelho.
  */
 
