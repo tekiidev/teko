@@ -26,6 +26,11 @@ const avisarIlha = (nome, dado) => window.__TAURI__?.event?.emit(nome, dado).cat
 const aura = {
   get estado() { return auraTela.estado; },
   set estado(valor) {
+    // Fim da conversa chamada por estalo: se a aura está desligada, ela some de novo.
+    if (valor === 'parado' && auraForcada) {
+      auraForcada = false;
+      aplicarAuraVisivel();
+    }
     // 'gesto' é só visual (aura sendo movida): a ilha não precisa saber.
     if (auraTela.estado !== valor && valor !== 'gesto') avisarIlha('teko-estado', valor);
     auraTela.estado = valor;
@@ -266,6 +271,9 @@ let detectorEstalo = null;
 /** Estalo = mesmo que falar "Teko" sozinho: bipe e ele começa a ouvir. */
 function chamadoPorEstalo() {
   if (modo !== 'vigia') return;
+  // O estalo mostra a aura na tela (mesmo desligada), já ouvindo; some quando a conversa acaba.
+  auraForcada = true;
+  aplicarAuraVisivel();
   trecho = null; // o som do estalo não vai pro reconhecimento de "Teko"
   anteriores = [];
   ciclo += 1;
@@ -916,6 +924,18 @@ function gestoDiagonal(maos, agora) {
 }
 
 /** Volta pra onde você deixou a aura da última vez. */
+// ---------- mostrar ou esconder a aura ----------
+// Desligada, a aura não desenha nada (a ilha cuida da conversa), mas a janela continua
+// rodando microfone, câmera e gestos. O estalo mostra ela durante uma conversa.
+const AURA_LIGADA = 'teko.aura.visivel';
+let auraLigada = true;
+let auraForcada = false;
+try { auraLigada = localStorage.getItem(AURA_LIGADA) !== '0'; } catch { /* padrão: ligada */ }
+
+function aplicarAuraVisivel() {
+  document.body.classList.toggle('sem-aura', !(auraLigada || auraForcada));
+}
+
 async function restaurarAura() {
   try {
     const salvo = JSON.parse(localStorage.getItem(AURA_GUARDADA) || 'null');
@@ -1150,8 +1170,21 @@ if (window.__TAURI__) {
   // "Centralizar aura" no menu da barra: esquece a posição guardada.
   listen('aura-centralizada', () => { try { localStorage.removeItem(AURA_GUARDADA); } catch { /* ok */ } });
   restaurarAura();
+  // Ligar/desligar a aura (menu da barra ou botão da ilha).
+  listen('aura-visivel', ({ payload }) => {
+    auraLigada = Boolean(payload);
+    try { localStorage.setItem(AURA_LIGADA, auraLigada ? '1' : '0'); } catch { /* só não lembra */ }
+    aplicarAuraVisivel();
+  });
+  aplicarAuraVisivel();
+  // Sincroniza o menu da barra com o que ficou salvo da última vez.
+  window.__TAURI__.core.invoke('definir_aura', { visivel: auraLigada }).catch(() => {});
   // A ilha abre depois da aura: quando ela avisa que está pronta, manda o estado atual.
-  listen('ilha-pronta', () => { avisarIlha('teko-escuta', escuta); avisarIlha('teko-estado', aura.estado); });
+  listen('ilha-pronta', () => {
+    avisarIlha('teko-escuta', escuta);
+    avisarIlha('teko-estado', aura.estado);
+    avisarIlha('aura-visivel', auraLigada);
+  });
   // Ilha do notch: botão Falar (ouve até você parar) e pedido digitado (mesmo fluxo da voz).
   listen('ilha-falar', async () => {
     if (modo === 'gravando') return terminarGravacao();

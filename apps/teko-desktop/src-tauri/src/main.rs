@@ -181,8 +181,9 @@ fn posicionar_aura(window: tauri::WebviewWindow, x: f64, y: f64, largura: f64, a
     let tt = tela.size().to_logical::<f64>(escala);
     let w = largura.clamp(AURA_LARGURA * 0.5, AURA_LARGURA * 1.8).min(tt.width);
     let h = altura.clamp(AURA_ALTURA * 0.5, AURA_ALTURA * 1.8).min(tt.height);
-    let x = x.clamp(tp.x - w * 0.3, tp.x + tt.width - w * 0.7);
-    let y = y.clamp(tp.y, tp.y + tt.height - h * 0.5);
+    // O limite é sempre a tela: a janela da aura nunca passa da borda.
+    let x = x.clamp(tp.x, tp.x + tt.width - w);
+    let y = y.clamp(tp.y, tp.y + tt.height - h);
     window.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
     window.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())
 }
@@ -190,10 +191,41 @@ fn posicionar_aura(window: tauri::WebviewWindow, x: f64, y: f64, largura: f64, a
 /// Volta a aura pro meio da tela, no tamanho padrão.
 fn centralizar_aura(app: &tauri::AppHandle) {
     if let Some(aura) = app.get_webview_window("aura") {
-        let _ = aura.set_size(tauri::LogicalSize::new(AURA_LARGURA, AURA_ALTURA));
-        let _ = aura.center();
+        colocar_no_centro(&aura);
         let _ = app.emit_to("aura", "aura-centralizada", ());
     }
+}
+
+/// O desenho da aura fica a 44% da altura da janela (a legenda fica embaixo), então
+/// centralizar a janela deixava a aura alta. Aqui o centro do desenho vai pro centro da tela.
+fn colocar_no_centro(aura: &tauri::WebviewWindow) {
+    let _ = aura.set_size(tauri::LogicalSize::new(AURA_LARGURA, AURA_ALTURA));
+    let (Ok(escala), Ok(Some(tela))) = (aura.scale_factor(), aura.current_monitor()) else { return };
+    let tp = tela.position().to_logical::<f64>(escala);
+    let tt = tela.size().to_logical::<f64>(escala);
+    let x = tp.x + (tt.width - AURA_LARGURA) / 2.0;
+    let y = (tp.y + tt.height / 2.0 - AURA_ALTURA * 0.44).clamp(tp.y, tp.y + tt.height - AURA_ALTURA);
+    let _ = aura.set_position(tauri::LogicalPosition::new(x, y));
+}
+
+/// Aura visível ou escondida, e o item do menu que mostra isso (fica sincronizado
+/// quando quem troca é a ilha).
+struct AuraVisivel {
+    ligada: AtomicBool,
+    item: std::sync::Mutex<Option<CheckMenuItem<tauri::Wry>>>,
+}
+
+/// Mostra ou esconde a aura. Sem `visivel`, alterna. Esconder só apaga o desenho:
+/// microfone, câmera e gestos continuam rodando na janela dela.
+#[tauri::command]
+fn definir_aura(app: tauri::AppHandle, estado: tauri::State<'_, AuraVisivel>, visivel: Option<bool>) -> bool {
+    let nova = visivel.unwrap_or(!estado.ligada.load(Ordering::Relaxed));
+    estado.ligada.store(nova, Ordering::Relaxed);
+    if let Some(item) = estado.item.lock().unwrap().as_ref() {
+        let _ = item.set_checked(nova);
+    }
+    let _ = app.emit("aura-visivel", nova);
+    nova
 }
 
 /// Gesto diagonal na aura: mesmo efeito do "Centralizar aura" do menu.
@@ -216,6 +248,7 @@ fn main() {
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
         .manage(ilha::AreaIlha::default())
+        .manage(AuraVisivel { ligada: AtomicBool::new(true), item: std::sync::Mutex::new(None) })
         .manage(servicos::Servicos::default())
         // Abrir junto com o Mac (LaunchAgent); liga e desliga no menu da barra.
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
@@ -254,7 +287,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, definir_aura, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -283,6 +316,7 @@ fn main() {
             // A aura não rouba cliques: o mouse passa direto por ela.
             if let Some(aura) = app.get_webview_window("aura") {
                 let _ = aura.set_ignore_cursor_events(true);
+                colocar_no_centro(&aura);
             }
 
             // Ilha no notch: mede o notch na thread principal (o AppKit exige) e cria a janela.
@@ -298,12 +332,14 @@ fn main() {
             let mapa = MenuItem::with_id(app, "mapa", "Abrir mapa neural", true, None::<&str>)?;
             let gestos = CheckMenuItem::with_id(app, "gestos", "Reconhecer gesto T automaticamente (câmera)", true, true, None::<&str>)?;
             let ilha_item = CheckMenuItem::with_id(app, "ilha", "Mostrar ilha no notch", true, true, None::<&str>)?;
+            let aura_item = CheckMenuItem::with_id(app, "aura", "Mostrar aura", true, true, None::<&str>)?;
+            *app.state::<AuraVisivel>().item.lock().unwrap() = Some(aura_item.clone());
             let centralizar = MenuItem::with_id(app, "centralizar", "Centralizar aura", true, None::<&str>)?;
             let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
             let junto = CheckMenuItem::with_id(app, "login", "Abrir junto com o Mac", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let junto_menu = junto.clone();
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &centralizar, &junto, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &aura_item, &centralizar, &junto, &dica, &sair])?;
             let escuta_menu = escuta.clone();
             let estalo_menu = estalo.clone();
             let gestos_menu = gestos.clone();
@@ -319,6 +355,13 @@ fn main() {
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "sair" => app.exit(0),
+                    "aura" => {
+                        // O menu já trocou a marca sozinho: só repassa o novo estado.
+                        let estado = app.state::<AuraVisivel>();
+                        let marcada = estado.item.lock().unwrap().as_ref().and_then(|i| i.is_checked().ok()).unwrap_or(true);
+                        estado.ligada.store(marcada, Ordering::Relaxed);
+                        let _ = app.emit("aura-visivel", marcada);
+                    }
                     "login" => {
                         let ligar = junto_menu.is_checked().unwrap_or(false);
                         let r = if ligar { app.autolaunch().enable() } else { app.autolaunch().disable() };
