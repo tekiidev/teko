@@ -60,14 +60,17 @@ cat erro.log | teko "explica esse erro"
 teko -c                   # continua a última conversa
 teko uso                  # tokens, custo e economia
 teko modelos              # fila do perfil e o que está pronto
+teko limpar               # apaga conversas (todas, só voz ou só do projeto), pede confirmação
 ```
 
 Sem `npm link`: `npm run teko -- "pergunta"`.
 
 - Dentro de uma pasta cadastrada na aba Projetos, o projeto entra no contexto sozinho (e as ferramentas de arquivo ficam ativas)
 - Ferramentas que alteram algo pedem confirmação no próprio terminal
-- Na conversa: `/modelo` (`/model`, `/models`, `/switch`), `/perfil` (`/profile`), `/projeto` (`/project`), `/nova` (`/new`, `/clear`), `/uso` (`/usage`), `/skills`, `/semcache` (`/nocache`), `/sair` (`/exit`, `/quit`) e qualquer skill (`/vagas ...`)
-- `/models` lista os modelos com chave e você escolhe pelo número (`/models todos` mostra tudo); `/modelo gemini-flash-latest` troca direto e aceita o nome curto; Tab completa comandos, modelos, perfis e projetos; ↑ volta mensagens
+- `teko limpar` apaga só do banco local (`data/teko.db`); o histórico de custo fica, e o que cada provedor guarda das chamadas de API segue a política dele
+- Na conversa: `/modelo` (`/model`, `/models`, `/switch`), `/perfil` (`/profile`), `/projeto` (`/project`), `/nova` (`/new`, `/clear`), `/uso` (`/usage`), `/limpar` (`/apagar`), `/skills`, `/semcache` (`/nocache`), `/sair` (`/exit`, `/quit`) e qualquer skill (`/vagas ...`)
+- Escolhas (modelo, perfil, aprovações, limpar) são com ↑ ↓ e Enter; Esc cancela
+- `/models` lista os modelos com chave (`/models todos` mostra tudo); `/modelo gemini-flash-latest` troca direto e aceita o nome curto; Tab completa comandos, modelos, perfis e projetos; ↑ volta mensagens
 - Linha terminando em `\` continua na próxima; Ctrl+C interrompe a resposta
 - `NO_COLOR=1` desliga as cores
 
