@@ -19,7 +19,8 @@ export const MODELS_DIR = path.join(DATA_DIR, 'models');
 // Voz clonada: gravação de referência e ambiente Python ficam em data/ (fora do git).
 export const VOICE_DIR = path.join(DATA_DIR, 'voice');
 export const REFERENCE_WAV = path.join(VOICE_DIR, 'referencia.wav');
-export const VOICE_ENV_PYTHON = path.join(DATA_DIR, 'voice-env', 'bin', 'python');
+// Ambiente Python da voz clonada (mlx-audio, nativo do chip da Apple).
+export const VOICE_ENV_PYTHON = path.join(DATA_DIR, 'voice-mlx', 'bin', 'python');
 export const DEFAULT_MODEL = 'ggml-small.bin';
 // Modelo menor e mais rápido só pra conferir a palavra de ativação.
 export const WAKE_MODEL = 'ggml-base.bin';

@@ -95,10 +95,10 @@ npm run voz                     # abre o app (ícone na barra de menu)
 
 ### Voz clonada (local)
 
-O Teko pode falar com a sua voz e o seu sotaque, usando o [Chatterbox](https://github.com/resemble-ai/chatterbox) (licença MIT) no próprio Mac, a partir de uns 30 segundos de gravação.
+O Teko pode falar com a sua voz e o seu sotaque, usando o [Chatterbox](https://github.com/resemble-ai/chatterbox) multilíngue (licença MIT) em MLX ([mlx-audio](https://github.com/Blaizzy/mlx-audio)), nativo do chip da Apple, a partir de uns 30 segundos de gravação. Na primeira vez o modelo é baixado.
 
 ```bash
-python3.11 -m venv data/voice-env && data/voice-env/bin/pip install chatterbox-tts "setuptools<81"   # uma vez (~3 GB)
+python3.11 -m venv data/voice-mlx && data/voice-mlx/bin/pip install mlx-audio   # uma vez
 npm run voz:referencia                          # mostra o texto sugerido pra gravar
 npm run voz:referencia -- ~/Downloads/voz.m4a   # converte a gravação
 npm run voz:clone                               # deixe rodando junto com o npm start
@@ -106,11 +106,9 @@ npm run voz:clone                               # deixe rodando junto com o npm 
 
 - A gravação fica em `data/voice` (fora do git) e o servidor de voz escuta só em `127.0.0.1`
 - Grave só a sua voz, ou a de alguém que autorizou por escrito
-- O Chatterbox marca o áudio gerado com uma marca d'água inaudível (Perth), que identifica que é voz sintética
-- Velocidade: num MacBook M5 com 16 GB, no primeiro teste (com uma referência sintética), cada frase curta levou ~35 s na GPU, lento demais pra conversa. O app fala frase por frase pra começar antes, mas por enquanto a voz clonada serve mais pra testar do que pro dia a dia
-- `TEKO_TTS_DEVICE=cpu` força a CPU (no teste foi mais lenta que a GPU)
+- Velocidade: num MacBook M5 com 16 GB, o modelo 8-bit (padrão) gera a fala mais rápido do que ela é falada (~0,7 a 1 s por segundo de fala), então não sobra pausa entre frases; na versão PyTorch levava de 15 a 60 s por frase. `TEKO_TTS_MODEL=mlx-community/chatterbox-4bit` é ainda mais rápido
 - Semelhança: o modelo usa só ~10 s da gravação, então grave falando direto, sem pausas longas e sem música; áudio comprimido (tirado de vídeo ou gravação de tela) piora o resultado
-- Ajustes: `TEKO_TTS_CFG` (padrão 0.3; mais baixo segue mais o ritmo da gravação), `TEKO_TTS_TEMPERATURE` (0.7; mais baixo varia menos) e `TEKO_TTS_EXAGGERATION` (0.5)
+- Ajustes: `TEKO_TTS_CFG` (0.5), `TEKO_TTS_TEMPERATURE` (0.8), `TEKO_TTS_EXAGGERATION` (0.1); modelo em `TEKO_TTS_MODEL`
 
 ## Cofu
 
