@@ -9,6 +9,8 @@ import { usageSummary } from '@teko/ai/usage';
 import { listSkills, getSkill } from '@teko/ai/skills';
 import { resolveApproval } from '@teko/ai/approvals';
 import { ajudaTexto } from '@teko/ai/help';
+import { contarConversas, limparConversas, type Alvo } from '@teko/ai/cleanup';
+import { escolher, confirmar } from './select.js';
 import { banner, c, fmtCost, fmtTokens } from './ui.js';
 
 const HELP = `
@@ -19,6 +21,7 @@ ${c.accent('Uso')}
   teko "pergunta"           responde e sai
   cat erro.log | teko "explica"   junta o que vier pela entrada
   teko uso | modelos | skills | ajuda
+  teko limpar [voz|projeto|todas]   apaga conversas (pede confirmação)
 
 ${c.accent('Opções')}
   -p, --perfil <id>         perfil (code, docs, terse...)
@@ -30,17 +33,19 @@ ${c.accent('Opções')}
   -v, --version
 
 ${c.accent('Na conversa')}
-  /modelo             ${c.dim('/model /models /switch')}     lista e escolhe pelo número
+  /modelo             ${c.dim('/model /models /switch')}     escolhe com ↑ ↓ e Enter
   /modelo <id|auto>                              troca direto (aceita nome curto)
-  /perfil <id>        ${c.dim('/profile')}                   troca a fila (code, docs, terse...)
+  /perfil [id]        ${c.dim('/profile')}                   troca a fila (sem id: escolhe com setas)
   /projeto <slug>     ${c.dim('/project')}                   usa um projeto (nenhum = sem projeto)
   /nova               ${c.dim('/new /clear')}                conversa nova
+  /limpar             ${c.dim('/apagar')}                    apaga conversas salvas (pede confirmação)
   /uso                ${c.dim('/usage /cost')}               tokens, custo e economia
   /skills                                        lista as skills
   /semcache           ${c.dim('/nocache')}                   liga/desliga o cache local
   /ajuda              ${c.dim('/help')}                      esta ajuda
   /sair               ${c.dim('/exit /quit /q')}             sai
   Qualquer skill: /vagas <texto>. Tab completa os comandos, ↑ volta mensagens.
+  Nas escolhas: ↑ ↓ move, Enter confirma, Esc cancela.
   Linha terminando em \\ continua na próxima.
 `;
 
@@ -56,6 +61,7 @@ const ALIASES: Record<string, string> = {
   perfil: 'perfil', profile: 'perfil', perfis: 'perfil', profiles: 'perfil',
   projeto: 'projeto', project: 'projeto', projetos: 'projeto', projects: 'projeto',
   semcache: 'semcache', nocache: 'semcache',
+  limpar: 'limpar', apagar: 'limpar',
 };
 
 /** Ajuda do terminal + tudo que dá pra fazer no Teko (voz, gestos, mapa), da mesma fonte do mapa. */
@@ -181,6 +187,57 @@ function printSkills() {
   console.log('');
 }
 
+const plural = (n: number, um: string, varios = `${um}s`) => `${n} ${n === 1 ? um : varios}`;
+
+/** Apaga conversas do banco local, sempre perguntando antes. Devolve true se apagou algo. */
+async function limpar(state: State, arg = '') {
+  if (!process.stdin.isTTY) {
+    console.log(c.dim('  sem terminal interativo: nada foi apagado'));
+    return false;
+  }
+  const porNome: Record<string, Alvo | null> = {
+    todas: { tipo: 'todas' }, tudo: { tipo: 'todas' }, all: { tipo: 'todas' },
+    voz: { tipo: 'voz' }, voice: { tipo: 'voz' },
+    projeto: state.projectId ? { tipo: 'projeto', projectId: state.projectId } : null,
+  };
+  let alvo: Alvo | null = null;
+  if (arg) {
+    alvo = porNome[arg.toLowerCase()] ?? null;
+    if (!alvo) {
+      console.log(c.red(arg === 'projeto' ? '  sem projeto ativo' : `  opção desconhecida: ${arg}`) + c.dim(' (use voz, projeto ou todas)\n'));
+      return false;
+    }
+  } else {
+    const n = (a: Alvo) => plural(contarConversas(a).sessoes, 'conversa');
+    const opcoes: { label: string; value: Alvo | null; hint?: string }[] = [
+      { label: 'Cancelar', value: null },
+      { label: 'Só as de voz', value: { tipo: 'voz' }, hint: n({ tipo: 'voz' }) },
+    ];
+    if (state.projectId) {
+      const a: Alvo = { tipo: 'projeto', projectId: state.projectId };
+      opcoes.push({ label: `Só do projeto ${state.projectName}`, value: a, hint: n(a) });
+    }
+    opcoes.push({ label: 'Todas', value: { tipo: 'todas' }, hint: n({ tipo: 'todas' }) });
+    alvo = await escolher('O que apagar?', opcoes);
+    if (!alvo) { console.log(''); return false; }
+  }
+  const { sessoes, mensagens } = contarConversas(alvo);
+  if (!sessoes) {
+    console.log(c.dim('  nada pra apagar\n'));
+    return false;
+  }
+  console.log(c.dim('  apaga só do seu Mac (data/teko.db); o histórico de custo do /uso fica'));
+  const ok = await confirmar(`Apagar ${plural(sessoes, 'conversa')} (${plural(mensagens, 'mensagem', 'mensagens')})? Não dá pra desfazer.`, {
+    sim: 'Sim, apagar',
+    nao: 'Não, cancelar',
+  });
+  if (!ok) { console.log(''); return false; }
+  limparConversas(alvo);
+  state.sessionId = null;
+  console.log(c.green(`  ✓ ${sessoes} conversa${sessoes > 1 ? 's' : ''} apagada${sessoes > 1 ? 's' : ''}\n`));
+  return true;
+}
+
 /** Roda uma mensagem e imprime em streaming. `ask` decide aprovações de ferramentas. */
 async function turn(text: string, state: State, ask: (q: string) => Promise<boolean>, signal: AbortSignal) {
   let printed = false;
@@ -221,7 +278,7 @@ async function turn(text: string, state: State, ask: (q: string) => Promise<bool
       case 'tool_call': {
         note(c.cyan(`  ⚙ ${ev.name}`) + c.dim(` ${String(ev.preview || '').split('\n')[0].slice(0, 120)}`));
         if (ev.requiresApproval) {
-          const ok = await ask(`${c.amber('  permitir?')} ${c.dim('[s/N]')} `);
+          const ok = await ask('Permitir?');
           resolveApproval(ev.id, ok);
         }
         break;
@@ -291,7 +348,7 @@ async function chat(state: State) {
       process.exit(0);
     }
   });
-  const ask = async (q: string) => /^s(im)?$/i.test((await rl.question(q)).trim());
+  const ask = (q: string) => confirmar(q, { sim: 'Permitir', nao: 'Negar' });
   const prompt = c.accent('› ');
 
   while (true) {
@@ -316,6 +373,7 @@ async function chat(state: State) {
       if (cmd === 'ajuda') { console.log(ajudaCompleta()); continue; }
       if (cmd === 'nova') { state.sessionId = null; console.log(c.dim('  conversa nova\n')); continue; }
       if (cmd === 'uso') { printUsage(); continue; }
+      if (cmd === 'limpar') { await limpar(state, arg); continue; }
       if (cmd === 'skills') { printSkills(); continue; }
       if (cmd === 'semcache') {
         state.noCache = !state.noCache;
@@ -323,21 +381,35 @@ async function chat(state: State) {
         continue;
       }
       if (cmd === 'perfil') {
-        const ids = listProfiles().map((p) => p.id);
-        if (!ids.includes(arg)) { console.log(c.dim(`  perfis: ${ids.join(', ')}\n`)); continue; }
-        state.profileId = arg;
+        const perfis = listProfiles();
+        const ids = perfis.map((p) => p.id);
+        let id: string | null = arg;
+        if (!arg) {
+          id = await escolher('Perfil', perfis.map((p) => ({ label: p.id, value: p.id, hint: p.label || '' })), Math.max(0, ids.indexOf(state.profileId)));
+          if (!id) { console.log(''); continue; }
+        } else if (!ids.includes(arg)) { console.log(c.dim(`  perfis: ${ids.join(', ')}\n`)); continue; }
+        state.profileId = id;
         console.log(`  ${routeLine(state)}\n`);
         continue;
       }
       if (cmd === 'modelo' || cmd === 'modelos') {
-        // Sem argumento: lista numerada e escolhe pelo número.
+        // Sem argumento: escolhe com as setas.
         if (!arg || arg === 'todos' || arg === 'all') {
-          const list = printModels(state, Boolean(arg));
-          const answer = (await rl.question(c.accent('  número (Enter mantém): '))).trim();
-          if (!answer) { console.log(''); continue; }
-          const n = Number(answer);
-          if (!Number.isInteger(n) || n < 0 || n > list.length) { console.log(c.red('  número inválido\n')); continue; }
-          state.modelId = n === 0 ? null : list[n - 1].modelId;
+          const { list, hidden } = modelChoices(state, Boolean(arg));
+          if (!list.length) { console.log(c.amber('  nenhum modelo pronto: coloque uma chave no .env ou na aba Conexões do painel\n')); continue; }
+          const opcoes = [
+            { label: 'auto', value: 'auto', hint: `fila do perfil ${state.profileId}` },
+            ...list.map((m) => ({
+              label: `${m.status === 'ready' ? '●' : '○'} ${m.label}`,
+              value: m.modelId as string,
+              hint: `${m.modelId}${m.inQueue ? ' · na fila' : ''}${m.status === 'ready' ? '' : ` · ${m.reason || ''}`}`,
+            })),
+          ];
+          const atual = state.modelId ? opcoes.findIndex((o) => o.value === state.modelId) : 0;
+          if (hidden) console.log(c.dim(`  ${hidden} sem chave escondidos · /models todos mostra tudo`));
+          const escolhido = await escolher<string>('Modelo', opcoes, Math.max(0, atual));
+          if (!escolhido) { console.log(''); continue; }
+          state.modelId = escolhido === 'auto' ? null : escolhido;
           console.log(`  ${routeLine(state)}\n`);
           continue;
         }
@@ -405,6 +477,10 @@ async function main() {
   if (opts.words.length === 1 && first === 'uso') return printUsage();
   if (opts.words.length === 1 && first === 'modelos') return printModels(state);
   if (opts.words.length === 1 && first === 'skills') return printSkills();
+  if (['limpar', 'apagar'].includes(first) && opts.words.length <= 2) {
+    await limpar(state, opts.words[1] || '');
+    return;
+  }
 
   const piped = await readStdin();
   const words = first === 'chat' ? opts.words.slice(1) : opts.words;
@@ -427,10 +503,7 @@ async function main() {
       console.log(c.dim('  (sem terminal interativo: negado)'));
       return false;
     }
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await rl.question(q);
-    rl.close();
-    return /^s(im)?$/i.test(answer.trim());
+    return confirmar(q, { sim: 'Permitir', nao: 'Negar' });
   };
   if (!(await turn(text, state, ask, controller.signal))) process.exitCode = 1;
 }
