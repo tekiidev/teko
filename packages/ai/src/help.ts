@@ -18,6 +18,7 @@ export const AJUDA: SecaoAjuda[] = [
       { como: '"tchau" · "valeu" · "é isso"', faz: 'encerra a conversa' },
       { como: 'Esc', faz: 'cancela a conversa (para a fala e descarta a resposta)' },
       { como: '"Teko, trabalha no projeto <nome>"', faz: 'muda o projeto da conversa' },
+      { como: '"Teko, abre o <app>"', faz: 'abre um app instalado (Mac, Linux e Windows); funciona no chat também' },
       { como: '"Teko, sai do projeto"', faz: 'volta a conversar sem projeto' },
       { como: '"sim" · "pode" / "não"', faz: 'aprova ou nega quando ele pergunta "Posso…?"' },
     ],

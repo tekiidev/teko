@@ -48,6 +48,12 @@ const plain = (t: string) => String(t || '').toLowerCase().normalize('NFD').repl
  * Só vale se o nome bater com um projeto cadastrado (senão segue pra IA normalmente).
  * Devolve { projectId } (null = sair do projeto) ou undefined se não for comando.
  */
+/** Pedido de abrir/iniciar algo: só aí vale oferecer as ferramentas do sistema fora de um projeto. */
+export function wantsSystemTools(text: string, profileId: string | null) {
+  if (profileId === 'voice') return true;
+  return /\b(abr[aei]|abrir|abre|open|inici[ae]|iniciar|lan[cç]a|launch|executa|roda o app)\b/i.test(text);
+}
+
 export function parseProjectCommand(text: string, projects: { id: string; name: string; slug?: string | null }[]) {
   const t = plain(text).replace(/^(ei,?\s*)?teko[,.!]?\s*/, '').replace(/[.!?]+$/, '');
   if (/^(sai|sair|fecha|fechar) (do|o) projeto$|^sem projeto$/.test(t)) return { projectId: null, name: null };
@@ -121,7 +127,9 @@ export async function* runTurn({
   const project = session.project_id ? db.prepare('SELECT * FROM projects WHERE id = ?').get(session.project_id) : null;
   const projectPath = project?.path && fs.existsSync(project.path) ? project.path : null;
   // Todas as ferramentas; as que alteram algo pedem aprovação (no app de voz: falando "sim" ou com pinça).
-  const tools = projectPath ? toolDefs() : null;
+  // Sem projeto, só as ferramentas do sistema (abrir app), e só quando fazem sentido:
+  // oferecer ferramentas desliga o cache de respostas.
+  const tools = projectPath ? toolDefs() : wantsSystemTools(text, profileId) ? toolDefs({ systemOnly: true }) : null;
 
   let retrieved = '';
   if (project?.id) {
