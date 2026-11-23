@@ -16,9 +16,11 @@ test('delegate_agent roda o agente no projeto e lista o que mudou', async () => 
   fs.writeFileSync(bin, `#!/bin/sh\necho "oi" > feito.txt\necho '{"type":"result","is_error":false,"result":"Criei feito.txt.","total_cost_usd":0.0123,"num_turns":3}'\n`, { mode: 0o755 });
   process.env.CLAUDE_BIN = bin;
   try {
+    process.env.TEKO_AGENT_REVIEW = '0';
     const r = await delegateAgent({ task: 'cria um arquivo' }, { root: repo });
+    delete process.env.TEKO_AGENT_REVIEW;
     assert.equal(r.ok, true);
-    assert.match(r.output, /terminou · US\$ 0\.0123 · 3 passos/);
+    assert.match(r.output, /IMPLEMENTAÇÃO \(Claude Code\): ok · US\$ 0\.0123 · 3 passos/);
     assert.match(r.output, /Criei feito\.txt\./);
     assert.match(r.output, /- feito\.txt/);
   } finally {

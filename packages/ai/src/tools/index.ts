@@ -136,7 +136,7 @@ export const TOOLS = [
   {
     name: 'delegate_agent',
     description:
-      'Delega uma tarefa de código grande (implementar, corrigir bug, refatorar vários arquivos) pro Claude Code, que edita o projeto ativo e devolve um resumo. Use para mudanças que exigem várias edições; para ajustes pequenos, prefira edit_file.',
+      'Delega uma tarefa de código (implementar, corrigir bug, refatorar vários arquivos) pra uma dupla: o Claude Code implementa no projeto ativo e uma IA de outra empresa revisa; se ela achar problema, o Claude Code corrige. Devolve o relatório (o que mudou, o que o revisor pegou, custo). Para ajustes pequenos, prefira edit_file.',
     parameters: {
       type: 'object',
       properties: { task: str('tarefa completa, com contexto suficiente pra ser feita sem perguntas') },
