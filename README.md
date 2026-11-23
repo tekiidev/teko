@@ -88,6 +88,7 @@ Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, 
 
 - "Teko, qual a capital do Maranhão?" numa frase só já vai direto
 - "Teko" sozinho: um bipe, e ele espera você falar (termina quando você para)
+- "Teko, abre o Spotify": abre apps instalados pelo nome (Mac, Linux e Windows), sem aprovação, só o que estiver instalado; a resposta diz se ele viu o app abrir
 
 ```bash
 brew install whisper-cpp rust   # uma vez

@@ -2,6 +2,7 @@ import { listFiles, readFile, writeFile, editFile } from './fs.js';
 import { grep } from './search.js';
 import { runCommand } from './shell.js';
 import { delegateAgent } from './agent.js';
+import { openApp } from './apps.js';
 import { search } from '../search-index.js';
 import { getSkill, renderSkill } from '../skills.js';
 
@@ -147,6 +148,21 @@ export const TOOLS = [
     preview: (args) => `delegar pro Claude Code:\n${String(args.task || '').slice(0, 700)}`,
   },
   {
+    name: 'open_app',
+    description:
+      'Abre um aplicativo instalado no computador pelo nome (ex.: Spotify, Visual Studio Code, Calculadora). Só o nome, sem caminho nem argumentos. A resposta diz se ele foi visto aberto.',
+    parameters: {
+      type: 'object',
+      properties: { name: str('nome do aplicativo, como aparece no sistema') },
+      required: ['name'],
+    },
+    requiresApproval: false,
+    // Não depende de projeto: vale também fora de uma pasta cadastrada.
+    system: true,
+    run: openApp,
+    preview: (args) => `abrir ${args.name}`,
+  },
+  {
     name: 'use_skill',
     description:
       'Carrega as instruções completas de uma skill listada em "Skills disponíveis". Use antes de responder quando o pedido combinar com a descrição de uma skill.',
@@ -165,9 +181,12 @@ export const TOOLS = [
   },
 ];
 
-/** Definições das ferramentas pro modelo. `readOnly` deixa só as que não pedem aprovação. */
-export function toolDefs({ readOnly = false } = {}) {
-  return TOOLS.filter((tool) => !readOnly || !tool.requiresApproval).map(({ name, description, parameters }) => ({ name, description, parameters }));
+/**
+ * Definições das ferramentas pro modelo. `readOnly` deixa só as que não pedem aprovação;
+ * `systemOnly` deixa só as que não precisam de projeto (ex.: abrir aplicativo).
+ */
+export function toolDefs({ readOnly = false, systemOnly = false } = {}) {
+  return TOOLS.filter((tool) => (!readOnly || !tool.requiresApproval) && (!systemOnly || (tool as any).system)).map(({ name, description, parameters }) => ({ name, description, parameters }));
 }
 
 export function getTool(name) {
@@ -187,6 +206,8 @@ export function previewFor(name, args) {
 export async function executeTool(name, args, ctx) {
   const tool = getTool(name);
   if (!tool) return { ok: false, output: `ferramenta desconhecida: ${name}` };
+  // Sem projeto, as ferramentas de arquivo e shell não têm pasta onde ficar presas.
+  if (!ctx?.root && !(tool as any).system) return { ok: false, output: `${name} precisa de um projeto ativo` };
   try {
     return await tool.run(args || {}, ctx);
   } catch (err) {
