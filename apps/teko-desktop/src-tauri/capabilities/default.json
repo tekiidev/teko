@@ -11,6 +11,8 @@
     "allow-open-context-map",
     "allow-definir-esc",
     "allow-chat-stream",
-    "allow-approve-tool"
+    "allow-approve-tool",
+    "allow-aura-geometria",
+    "allow-posicionar-aura"
   ]
 }
