@@ -11,6 +11,7 @@
 // Tudo passa só pelo servidor local do Teko (npm start) em 127.0.0.1:4780.
 
 import { criarAura } from './aura.js';
+import { criarDetectorEstalo } from './estalo.js';
 
 const API = 'http://127.0.0.1:4780/api';
 const ROTAS_VOZ = {
@@ -247,7 +248,29 @@ function aoQuadro(quadro) {
   const v = rms(quadro);
   if (v > pico) pico = v;
   if (modo === 'gravando') return gravarQuadro(quadro, v);
-  if (modo === 'vigia') return vigiar(quadro, v);
+  if (modo === 'vigia') {
+    // Estalo de dedos também chama o Teko (só esperando: falando ou gravando, não conta).
+    if (estaloLigado) {
+      if (!detectorEstalo || detectorEstalo.taxa !== taxa) detectorEstalo = { taxa, ...criarDetectorEstalo({ taxa, aoDetectar: chamadoPorEstalo }) };
+      detectorEstalo.quadro(quadro);
+    }
+    return vigiar(quadro, v);
+  }
+}
+
+// ---------- estalo de dedos ----------
+
+let estaloLigado = true; // item "Ligar com estalo de dedos" do menu da barra
+let detectorEstalo = null;
+
+/** Estalo = mesmo que falar "Teko" sozinho: bipe e ele começa a ouvir. */
+function chamadoPorEstalo() {
+  if (modo !== 'vigia') return;
+  trecho = null; // o som do estalo não vai pro reconhecimento de "Teko"
+  anteriores = [];
+  ciclo += 1;
+  bipe();
+  comecarGravacao({ auto: true });
 }
 
 // ---------- vigia ("Teko") ----------
@@ -1116,6 +1139,11 @@ if (window.__TAURI__) {
   const { listen } = window.__TAURI__.event;
   listen('falar', ({ payload }) => (payload ? apertou() : soltou()));
   listen('escuta', ({ payload }) => mudarEscuta(Boolean(payload)));
+  listen('estalo', ({ payload }) => {
+    estaloLigado = Boolean(payload);
+    detectorEstalo?.reset();
+    mostrar('teko', estaloLigado ? 'Um estalo de dedos chama o Teko.' : 'Estalo desligado.', 2200);
+  });
   listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
   listen('cancelar', () => cancelarConversa());
   listen('mapa-aberto', () => desligarGestos(true));

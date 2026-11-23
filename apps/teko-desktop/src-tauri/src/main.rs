@@ -285,14 +285,16 @@ fn main() {
 
             // Escuta do "Teko": ligada ao abrir; desmarcar desliga o microfone.
             let escuta = CheckMenuItem::with_id(app, "escuta", "Ativar falando \"Teko\"", true, true, None::<&str>)?;
+            let estalo = CheckMenuItem::with_id(app, "estalo", "Ligar com estalo de dedos", true, true, None::<&str>)?;
             let mapa = MenuItem::with_id(app, "mapa", "Abrir mapa neural", true, None::<&str>)?;
             let gestos = CheckMenuItem::with_id(app, "gestos", "Reconhecer gesto T automaticamente (câmera)", true, true, None::<&str>)?;
             let ilha_item = CheckMenuItem::with_id(app, "ilha", "Mostrar ilha no notch", true, true, None::<&str>)?;
             let centralizar = MenuItem::with_id(app, "centralizar", "Centralizar aura", true, None::<&str>)?;
             let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &mapa, &gestos, &ilha_item, &centralizar, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &centralizar, &dica, &sair])?;
             let escuta_menu = escuta.clone();
+            let estalo_menu = estalo.clone();
             let gestos_menu = gestos.clone();
             let ilha_menu = ilha_item.clone();
             let gesto_ativo_menu = Arc::clone(&gesto_ativo);
@@ -310,6 +312,9 @@ fn main() {
                         if let Err(err) = open_context_map(app.clone()) {
                             eprintln!("[Teko] não consegui abrir o mapa: {err}");
                         }
+                    }
+                    "estalo" => {
+                        let _ = app.emit("estalo", estalo_menu.is_checked().unwrap_or(true));
                     }
                     "escuta" => {
                         let ligada = escuta_menu.is_checked().unwrap_or(false);
