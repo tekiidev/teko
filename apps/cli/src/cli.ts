@@ -266,6 +266,9 @@ async function turn(text: string, state: State, ask: (q: string) => Promise<bool
       case 'meta':
         state.sessionId = ev.sessionId;
         break;
+      case 'redacted':
+        note(c.dim(`  🔒 escondi ${ev.count} segredo${ev.count > 1 ? 's' : ''} antes de enviar pra ${ev.providerLabel}`));
+        break;
       case 'compressed':
         note(c.dim(`  resumo: ${ev.messages} msgs antigas, ~${fmtTokens(ev.savedTokens)} tok a menos`));
         break;

@@ -1,6 +1,7 @@
 import { db, getModel, getProvider, getSetting, safeJson } from './db.js';
 import { ADAPTERS } from './providers/index.js';
 import { env } from './config.js';
+import { esconderNaConversa, provedorLocal } from './privacy.js';
 import { previaDesfazer } from './undo.js';
 import { tokensSince, windowStart } from './usage.js';
 import { createApproval, resolveApproval } from './approvals.js';
@@ -225,11 +226,16 @@ async function* attemptModel({
   signal?.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(() => controller.abort(new Error('timeout do provider')), timeoutMs);
 
+  // Pra fora do computador, segredos viram marcador antes de sair.
+  const local = provedorLocal(provider);
+  const limpo = local ? { system, mensagens: conversation, n: 0 } : esconderNaConversa(system, conversation);
+  if (limpo.n) yield { type: 'redacted', count: limpo.n, providerLabel: provider.label };
+
   let text = '';
   const promise = adapter({
     model: model.model,
-    system,
-    messages: conversation,
+    system: limpo.system,
+    messages: limpo.mensagens,
     maxTokens,
     apiKey: resolveKey(provider),
     baseUrl: provider.base_url,

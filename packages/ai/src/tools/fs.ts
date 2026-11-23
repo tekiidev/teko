@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { guardarAntes } from '../undo.js';
+import { arquivoSecreto } from '../privacy.js';
 
 const IGNORE = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', 'coverage',
@@ -35,6 +36,7 @@ export function resolveInside(root, target = '.') {
 }
 
 function readTextFile(abs, rel) {
+  if (arquivoSecreto(abs)) throw new Error(`${rel} guarda segredos; o Teko não lê esse arquivo pra ele não ir parar na IA`);
   const stat = fs.statSync(abs);
   if (stat.isDirectory()) throw new Error(`${rel} é um diretório; use list_files`);
   if (stat.size > MAX_FILE_BYTES) throw new Error(`${rel} é grande demais (${stat.size} bytes)`);

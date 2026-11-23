@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveInside } from './fs.js';
+import { arquivoSecreto } from '../privacy.js';
 
 const IGNORE = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', 'coverage',
@@ -46,7 +47,7 @@ export async function grep(args: any = {}, ctx) {
     }
     for (const entry of entries) {
       if (matches.length >= max || scanned >= MAX_FILES) return;
-      if (entry.name.startsWith('.') || IGNORE.has(entry.name)) continue;
+      if (entry.name.startsWith('.') || IGNORE.has(entry.name) || arquivoSecreto(entry.name)) continue;
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(abs);
