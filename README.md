@@ -89,6 +89,7 @@ Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, 
 
 - "Teko, qual a capital do Maranhão?" numa frase só já vai direto
 - "Teko" sozinho: um bipe, e ele espera você falar (termina quando você para)
+- **Microfone ligado/desligado**: botão de microfone na ilha, item "Microfone ligado" no menu da barra ou "Teko, desligar microfone". Desligado, o microfone fecha de verdade (o ponto laranja do macOS some) e nada abre ele, nem ⌥ Espaço, até você ligar de novo
 - Comandos que o app resolve na hora, sem IA (falando ou digitando na ilha): "Teko, abrir mapa neural", "Teko, farmar aura" (liga a aura), "Teko, brochar" (desliga), "Teko, ativar gestos" / "desativar gestos" e "Teko, autodestruir" (responde "Foi um prazer, senhor." e fecha o Teko)
 - **Abrir junto com o Mac**: no menu da barra. Ao abrir, o app sobe sozinho o servidor do Teko e a voz clonada (se estiver instalada) quando eles não estiverem rodando; logs em `data/logs/`. Ao sair, encerra só o que ele mesmo abriu
 - **Estalo de dedos** também chama: precisa ser um estalo agudo e sozinho, então voz, batida na mesa, digitação e estalos em ritmo (música) não disparam. Desliga em "Ligar com estalo de dedos" no menu da barra O estalo também liga a aura, que fica na tela (parada, girando devagar); juntar as mãos (palma com palma) desliga

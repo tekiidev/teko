@@ -28,7 +28,7 @@ export const modelUrl = (name) => `https://huggingface.co/ggerganov/whisper.cpp/
 export const MODEL_URL = modelUrl(DEFAULT_MODEL);
 const MAX_SPEAK_CHARS = 1500;
 // Palavras que o reconhecimento deve conhecer (nomes e os comandos locais do app).
-const VOCAB = 'Teko, Teki, Cofu, Heka, tekidev, Claude, Gemini. Teko, abrir mapa neural. Teko, farmar aura. Teko, brochar. Teko, ativar gestos. Teko, autodestruir.';
+const VOCAB = 'Teko, Teki, Cofu, Heka, tekidev, Claude, Gemini. Teko, abrir mapa neural. Teko, farmar aura. Teko, brochar. Teko, ativar gestos. Teko, desligar microfone. Teko, autodestruir.';
 
 export function voiceSettings() {
   const cfg = getSetting('voice', {}) || {};

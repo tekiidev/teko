@@ -18,6 +18,24 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 /// Se o reconhecimento de gestos está ligado no menu; o mapa recebe isso na URL.
 struct GestoAtivo(Arc<AtomicBool>);
 
+/// Microfone ligado ou desligado, e o item do menu (sincronizado com a ilha e a voz).
+struct MicLigado {
+    ligado: AtomicBool,
+    item: std::sync::Mutex<Option<CheckMenuItem<tauri::Wry>>>,
+}
+
+/// Liga ou desliga o microfone (sem `ligado`, alterna). Desligado, nada abre o microfone.
+#[tauri::command]
+fn definir_microfone(app: tauri::AppHandle, estado: tauri::State<'_, MicLigado>, ligado: Option<bool>) -> bool {
+    let novo = ligado.unwrap_or(!estado.ligado.load(Ordering::Relaxed));
+    estado.ligado.store(novo, Ordering::Relaxed);
+    if let Some(item) = estado.item.lock().unwrap().as_ref() {
+        let _ = item.set_checked(novo);
+    }
+    let _ = app.emit("microfone", novo);
+    novo
+}
+
 /// Item "Reconhecer gesto T" do menu, pra acompanhar quando a voz liga ou desliga os gestos.
 struct ItemGestos(std::sync::Mutex<Option<CheckMenuItem<tauri::Wry>>>);
 
@@ -267,6 +285,7 @@ fn main() {
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
         .manage(ItemGestos(std::sync::Mutex::new(None)))
+        .manage(MicLigado { ligado: AtomicBool::new(true), item: std::sync::Mutex::new(None) })
         .manage(ilha::AreaIlha::default())
         .manage(AuraVisivel { ligada: AtomicBool::new(true), item: std::sync::Mutex::new(None) })
         .manage(servicos::Servicos::default())
@@ -307,7 +326,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, definir_aura, definir_gestos, sair_teko, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, aura_centralizar, definir_aura, definir_gestos, sair_teko, definir_microfone, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -347,6 +366,8 @@ fn main() {
             ilha::vigiar_mouse(app.handle().clone());
 
             // Escuta do "Teko": ligada ao abrir; desmarcar desliga o microfone.
+            let microfone = CheckMenuItem::with_id(app, "microfone", "Microfone ligado", true, true, None::<&str>)?;
+            *app.state::<MicLigado>().item.lock().unwrap() = Some(microfone.clone());
             let escuta = CheckMenuItem::with_id(app, "escuta", "Ativar falando \"Teko\"", true, true, None::<&str>)?;
             let estalo = CheckMenuItem::with_id(app, "estalo", "Ligar com estalo de dedos", true, true, None::<&str>)?;
             let mapa = MenuItem::with_id(app, "mapa", "Abrir mapa neural", true, None::<&str>)?;
@@ -359,7 +380,7 @@ fn main() {
             let junto = CheckMenuItem::with_id(app, "login", "Abrir junto com o Mac", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let junto_menu = junto.clone();
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &estalo, &mapa, &gestos, &ilha_item, &aura_item, &centralizar, &junto, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&microfone, &escuta, &estalo, &mapa, &gestos, &ilha_item, &aura_item, &centralizar, &junto, &dica, &sair])?;
             let escuta_menu = escuta.clone();
             let estalo_menu = estalo.clone();
             let gestos_menu = gestos.clone();
@@ -398,6 +419,13 @@ fn main() {
                     }
                     "estalo" => {
                         let _ = app.emit("estalo", estalo_menu.is_checked().unwrap_or(true));
+                    }
+                    "microfone" => {
+                        // O menu já trocou a marca sozinho: só repassa o novo estado.
+                        let estado = app.state::<MicLigado>();
+                        let marcado = estado.item.lock().unwrap().as_ref().and_then(|i| i.is_checked().ok()).unwrap_or(true);
+                        estado.ligado.store(marcado, Ordering::Relaxed);
+                        let _ = app.emit("microfone", marcado);
                     }
                     "escuta" => {
                         let ligada = escuta_menu.is_checked().unwrap_or(false);

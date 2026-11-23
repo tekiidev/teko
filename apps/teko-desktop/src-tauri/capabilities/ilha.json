@@ -11,6 +11,7 @@
     "allow-ilha-info",
     "allow-ilha-area",
     "allow-ilha-uso",
-    "allow-definir-aura"
+    "allow-definir-aura",
+    "allow-definir-microfone"
   ]
 }

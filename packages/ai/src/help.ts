@@ -25,6 +25,7 @@ export const AJUDA: SecaoAjuda[] = [
       { como: '"Teko, abrir mapa neural"', faz: 'abre o mapa (na hora, sem IA)' },
       { como: '"Teko, farmar aura" · "Teko, brochar"', faz: 'liga e desliga a aura' },
       { como: '"Teko, ativar gestos" · "desativar gestos"', faz: 'liga e desliga a câmera dos gestos' },
+      { como: 'botão de microfone na ilha · menu > Microfone ligado · "Teko, desligar microfone"', faz: 'desliga o microfone de vez (nada é ouvido até ligar de novo)' },
       { como: '"Teko, autodestruir"', faz: '"Foi um prazer, senhor." e fecha o Teko' },
       { como: '"Teko, abre o <app>"', faz: 'abre um app instalado (Mac, Linux e Windows); funciona no chat também' },
       { como: '"Teko, sai do projeto"', faz: 'volta a conversar sem projeto' },

@@ -17,6 +17,7 @@
     "allow-aura-centralizar",
     "allow-definir-aura",
     "allow-definir-gestos",
-    "allow-sair-teko"
+    "allow-sair-teko",
+    "allow-definir-microfone"
   ]
 }
