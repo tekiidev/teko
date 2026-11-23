@@ -45,7 +45,11 @@ test('voz recebe só ferramentas de leitura', () => {
   assert.ok(nomes.includes('read_file'));
   assert.ok(!nomes.includes('write_file'));
   assert.ok(!nomes.includes('delegate_agent'));
+  // delegate_agent só vai pro modelo quando o Claude Code existe nesta máquina.
+  const antes = process.env.CLAUDE_BIN;
+  process.env.CLAUDE_BIN = '/caminho/do/claude';
   assert.ok(toolDefs().some((t) => t.name === 'delegate_agent'));
+  if (antes === undefined) delete process.env.CLAUDE_BIN; else process.env.CLAUDE_BIN = antes;
 });
 
 test('troca de projeto falada só com projeto que existe', () => {
