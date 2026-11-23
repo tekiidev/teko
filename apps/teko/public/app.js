@@ -838,21 +838,31 @@ async function mountContextMap() {
     if (hands.length >= 2) {
       const d = Math.hypot(hands[0][9].x - hands[1][9].x, hands[0][9].y - hands[1][9].y);
       view.lastPair = { d, at: now };
-      // Juntar e logo afastar (dentro de 1 s) = enquadrar a rede inteira.
-      if (d < 0.14) view.lastTogetherAt = now;
-      if (d > 0.35 && view.lastTogetherAt && now - view.lastTogetherAt < 1000 && now - (view.fitAt || 0) > 1500) {
-        view.fitAt = now; view.lastTogetherAt = 0; view.togetherSince = 0;
-        fitMap();
-        gestureStatus('Mapa enquadrado');
-        return;
+      // Enquadrar: mãos já separadas se afastando rápido em diagonais opostas (↖ ↘ ou ↗ ↙).
+      // Começa com as mãos separadas, então não se confunde com o juntar de fechar.
+      const [esq, dir] = [hands[0][9], hands[1][9]].sort((p, q) => p.x - q.x);
+      view.handHist = (view.handHist || []).filter((h) => now - h.t < 500);
+      view.handHist.push({ t: now, a: { x: esq.x, y: esq.y }, b: { x: dir.x, y: dir.y }, d });
+      const antigo = view.handHist[0];
+      if (antigo && now - antigo.t > 150 && antigo.d > 0.2 && now - (view.fitAt || 0) > 1500) {
+        const da = { x: esq.x - antigo.a.x, y: esq.y - antigo.a.y };
+        const db = { x: dir.x - antigo.b.x, y: dir.y - antigo.b.y };
+        const diagonal = (v) => Math.min(Math.abs(v.x), Math.abs(v.y)) / Math.max(Math.abs(v.x), Math.abs(v.y), 1e-6) > 0.35;
+        const forte = (v) => Math.hypot(v.x, v.y) > 0.07;
+        if (forte(da) && forte(db) && diagonal(da) && diagonal(db) && da.x * db.x + da.y * db.y < 0 && d - antigo.d > 0.1) {
+          view.fitAt = now; view.handHist = []; view.togetherSince = 0;
+          fitMap();
+          gestureStatus('Mapa enquadrado');
+          return;
+        }
       }
       if (d > 0.3) view.apartAt = now;
       const recentlyApart = now - view.apartAt < 2500;
       if (d < 0.12 && recentlyApart && now - (view.fitAt || 0) > 1500) return closeByGesture();
-      // Também fecha com as mãos juntas e paradas por 1 segundo (menos que isso pode ser o começo do enquadrar).
+      // Também fecha com as mãos juntas e paradas por meio segundo, sem precisar afastar antes.
       if (d < 0.14) {
         view.togetherSince ||= now;
-        if (now - view.togetherSince > 1000) return closeByGesture();
+        if (now - view.togetherSince > 500) return closeByGesture();
         gestureStatus('Segura as mãos juntas…');
         return;
       }
