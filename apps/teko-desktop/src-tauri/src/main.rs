@@ -243,7 +243,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, ilha::ilha_info, ilha::ilha_area])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, aura_geometria, posicionar_aura, ilha::ilha_info, ilha::ilha_area, ilha::ilha_uso])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
