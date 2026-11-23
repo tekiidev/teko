@@ -3,8 +3,8 @@ import { IAIndisponivel, montarLista } from '@/lib/ai.ts';
 
 /**
  * POST /api/lista { texto } -> { itens }
- * Rota pública: limita tamanho do texto e quantas chamadas cada IP faz,
- * pra ninguém gastar a cota da IA à toa. Se a IA falhar, responde 503
+ * Rota pública: limita tamanho do texto e quantas chamadas cada IP faz, e repassa
+ * pro servidor privado do Cofu (onde mora a IA). Se ele falhar, responde 503
  * e o app usa o leitor simples no aparelho.
  */
 
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const itens = await montarLista(texto);
+    const itens = await montarLista(texto, ip);
     return NextResponse.json({ itens });
   } catch (err) {
     const motivo = err instanceof IAIndisponivel ? err.message : 'erro inesperado';

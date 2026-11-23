@@ -136,14 +136,15 @@ App da feira, para qualquer pessoa: fale ou escreva o que vai comprar e o Cofu m
 <p align="center"><img src="docs/cofu-fase-1.png" alt="Cofu" width="320" /></p>
 
 ```bash
-npm run cofu              # http://localhost:4790 (usa o GOOGLE_API_KEY do .env da raiz)
+npm run cofu              # http://localhost:4790
 ```
 
 - Lista por texto ou voz (microfone do navegador); a IA devolve item, quantidade, unidade, categoria e preço estimado, validados com Zod
 - Sem internet ou se a IA falhar, um leitor simples no aparelho monta a lista mesmo assim
 - Tocar no item = ele cai no cofo; o cofo enche e muda de cor quando passa do orçamento
 - "Tem em casa" vai pra prateleira; "Nova feira" esvazia o cofo
-- Dados só no aparelho (IndexedDB); a chave da IA fica no servidor, com limite de pedidos por IP
+- Dados só no aparelho (IndexedDB)
+- A IA da lista mora no servidor privado do Cofu (`COFU_SERVER_URL` e `COFU_SERVER_TOKEN` no `.env`); sem ele, o leitor simples monta a lista. O app nunca vê a chave da IA
 - Preços são estimativas da IA, não preços reais de mercado (isso é a fase 2)
 
 ## O que já funciona
