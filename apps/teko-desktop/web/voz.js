@@ -776,7 +776,7 @@ async function ligarGestos() {
       gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, opcoes('CPU'));
     }
     if (!gestosSolicitados) return desligarGestos(true);
-    mostrar('teko', 'Gestos prontos. Forme um T com as mãos e afaste para abrir o mapa.');
+    mostrar('teko', 'Gestos prontos. Forme um T com as mãos e descole para abrir o mapa.');
     statusGesto('Gestos ligados · mostre as duas mãos');
 
     // ~8 quadros por segundo bastam pra gesto (a 60 quadros/s ele usava ~80% da GPU e
@@ -816,49 +816,54 @@ async function ligarGestos() {
           }).length;
           return extended >= 2; // mão aberta (tolera dedos meio dobrados)
         });
-        if (hands.length >= 2 && !gestosMapaAberto) {
+        const now = performance.now();
+        // Depois do T, a janela pra descolar fica aberta 2,5 s desde a última vez que o T foi visto.
+        const emJanela = gestosBase != null && now - gestosInicio < 2500;
+        const abrirMapa = async () => {
+          aura.formaT(false);
+          gestosEmT = false;
+          gestosMapaAberto = true;
+          try {
+            await desligarGestos(true);
+            await window.__TAURI__.core.invoke('open_context_map');
+            mostrar('teko', 'Mapa neural aberto. Junte as mãos para fechar.', 3500);
+          } catch (err) {
+            gestosMapaAberto = false;
+            mostrar('erro', `Não consegui abrir o mapa: ${err.message || err}`, 5000);
+            await ligarGestos();
+          }
+        };
+        // Descolar o T já abre: basta as mãos se afastarem um pouco, mesmo que os dedos
+        // fechem ou que o detector perca uma mão por um instante.
+        if (emJanela && !gestosMapaAberto && detectedHands.length >= 2) {
+          const d = Math.hypot(detectedHands[0][9].x - detectedHands[1][9].x, detectedHands[0][9].y - detectedHands[1][9].y);
+          if (d > gestosBase + .05) await abrirMapa();
+        }
+        if (gestosMapaAberto) {
+          // já abriu neste quadro
+        } else if (hands.length >= 2) {
           const a = hands[0][9], b = hands[1][9];
           const distance = Math.hypot(a.x - b.x, a.y - b.y);
           const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
           const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
-          // Começo do gesto: mãos abertas próximas (em T ou lado a lado). Depois é só afastar.
           // Só o T começa o gesto: mãos próximas e cruzadas. Tolerante: a partir de ~37° entre
           // as mãos já conta (um T perfeito é 90°), mas mãos lado a lado (paralelas) não.
           const formsT = distance < .3 && Math.abs(Math.cos(angleA - angleB)) < .8;
-          const now = performance.now();
-          if (gestosBase != null && now - gestosInicio < 4500 && distance > gestosBase + .12) {
-            aura.formaT(false);
-            gestosEmT = false;
-            gestosMapaAberto = true;
-            try {
-              await desligarGestos(true);
-              await window.__TAURI__.core.invoke('open_context_map');
-              mostrar('teko', 'Mapa neural aberto. Junte as mãos para fechar.', 3500);
-            } catch (err) {
-              gestosMapaAberto = false;
-              mostrar('erro', `Não consegui abrir o mapa: ${err.message || err}`, 5000);
-              await ligarGestos();
-            }
-          } else if (formsT) {
+          if (formsT) {
             aura.formaT(true);
-            statusGesto('T reconhecido · agora afaste as mãos');
-            if (!gestosEmT) mostrar('teko', 'T reconhecido. Afaste as mãos para abrir o mapa.', 1800);
+            statusGesto('T reconhecido · agora descole as mãos');
+            if (!gestosEmT) mostrar('teko', 'T reconhecido. Descole as mãos para abrir o mapa.', 1800);
             gestosEmT = true;
-            if (gestosBase == null || now - gestosInicio >= 4500) {
-              gestosBase = distance;
-              gestosInicio = now;
-            }
-          } else if (now - gestosInicio >= 4500) {
+            // Base = o T mais junto visto; a janela renova enquanto o T continua.
+            gestosBase = gestosBase == null || !emJanela ? distance : Math.min(gestosBase, distance);
+            gestosInicio = now;
+          } else if (!emJanela) {
             gestosBase = null;
             aura.formaT(false);
             gestosEmT = false;
-            statusGesto('Forme um T com as mãos e depois afaste');
-          } else {
-            aura.formaT(false);
-            gestosEmT = false;
-            statusGesto('Forme um T com as mãos e depois afaste');
+            statusGesto('Forme um T com as mãos e depois descole');
           }
-        } else if (hands.length < 2) {
+        } else if (!emJanela) {
           gestosBase = null;
           gestosInicio = 0;
           aura.formaT(false);
