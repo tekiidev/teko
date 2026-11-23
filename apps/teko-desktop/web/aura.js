@@ -17,6 +17,7 @@ export function criarAura(canvas) {
   const ctx = canvas.getContext('2d');
   let w = 0, h = 0, dpr = 1;
   let estado = 'parado';
+  let repouso = false; // aura ligada: parada, ela continua na tela (mais apagada)
   let nivel = 0; // volume suavizado, 0..1
   let alpha = 0; // visibilidade geral
   let t = 0;
@@ -97,7 +98,7 @@ export function criarAura(canvas) {
 
   function quadro(agora) {
     t = agora / 1000;
-    const alvo = estado === 'parado' ? 0 : 1;
+    const alvo = estado === 'parado' ? (repouso ? 0.45 : 0) : 1;
     alpha += (alvo - alpha) * (alvo ? 0.18 : 0.06);
     ctx.clearRect(0, 0, w, h);
     if (alpha < 0.01) return requestAnimationFrame(quadro);
@@ -128,6 +129,10 @@ export function criarAura(canvas) {
         const sentido = p.anel % 2 ? -1 : 1;
         a += t * (p.garra ? 1.6 : 0.5 + p.anel * 0.15) * sentido;
         r = p.r + Math.sin(t * 3 + p.fase) * 0.015;
+      } else if (estado === 'parado') {
+        // Repouso: os anéis giram bem devagar, cada um num sentido, respirando de leve.
+        a += t * (p.garra ? 0.25 : 0.08 + p.anel * 0.03) * (p.anel % 2 ? -1 : 1);
+        r = p.r * (1 + Math.sin(t * 1.2) * 0.015);
       } else if (estado === 'falando') {
         // Ondas saindo do centro, mais fortes quanto mais alto ele fala.
         const onda = Math.sin(p.r * 18 - t * 7);
@@ -171,6 +176,7 @@ export function criarAura(canvas) {
     set estado(valor) { estado = valor; },
     get estado() { return estado; },
     formaT(valor) { formaT = Boolean(valor); },
+    repouso(valor) { repouso = Boolean(valor); },
     janelaCamera(valor) { janelaCamera = Boolean(valor); },
     /** Volume bruto 0..1; suaviza subindo rápido e descendo devagar. */
     volume(v) { nivel += (Math.min(1, v) - nivel) * (v > nivel ? 0.5 : 0.12); },

@@ -26,15 +26,11 @@ const avisarIlha = (nome, dado) => window.__TAURI__?.event?.emit(nome, dado).cat
 const aura = {
   get estado() { return auraTela.estado; },
   set estado(valor) {
-    // Fim da conversa chamada por estalo: se a aura está desligada, ela some de novo.
-    if (valor === 'parado' && auraForcada) {
-      auraForcada = false;
-      aplicarAuraVisivel();
-    }
     // 'gesto' é só visual (aura sendo movida): a ilha não precisa saber.
     if (auraTela.estado !== valor && valor !== 'gesto') avisarIlha('teko-estado', valor);
     auraTela.estado = valor;
   },
+  repouso: (v) => auraTela.repouso(v),
   formaT: (v) => {
     // A ilha acende o T junto: dá retorno do gesto mesmo com a aura desligada.
     if (Boolean(v) !== tNaIlha) {
@@ -279,9 +275,8 @@ let detectorEstalo = null;
 /** Estalo = mesmo que falar "Teko" sozinho: bipe e ele começa a ouvir. */
 function chamadoPorEstalo() {
   if (modo !== 'vigia') return;
-  // O estalo mostra a aura na tela (mesmo desligada), já ouvindo; some quando a conversa acaba.
-  auraForcada = true;
-  aplicarAuraVisivel();
+  // O estalo liga a aura e ela fica na tela (juntar as mãos desliga).
+  if (!auraLigada) window.__TAURI__?.core?.invoke('definir_aura', { visivel: true }).catch(() => {});
   trecho = null; // o som do estalo não vai pro reconhecimento de "Teko"
   anteriores = [];
   ciclo += 1;
@@ -933,15 +928,41 @@ function gestoDiagonal(maos, agora) {
 
 /** Volta pra onde você deixou a aura da última vez. */
 // ---------- mostrar ou esconder a aura ----------
-// Desligada, a aura não desenha nada (a ilha cuida da conversa), mas a janela continua
-// rodando microfone, câmera e gestos. O estalo mostra ela durante uma conversa.
+// Ligada, a aura fica na tela o tempo todo (parada, girando devagar e mais apagada).
+// Desligada, não desenha nada (a ilha cuida da conversa), mas a janela continua rodando
+// microfone, câmera e gestos. Estalo liga; juntar as mãos desliga.
 const AURA_LIGADA = 'teko.aura.visivel';
 let auraLigada = true;
-let auraForcada = false;
 try { auraLigada = localStorage.getItem(AURA_LIGADA) !== '0'; } catch { /* padrão: ligada */ }
 
 function aplicarAuraVisivel() {
-  document.body.classList.toggle('sem-aura', !(auraLigada || auraForcada));
+  document.body.classList.toggle('sem-aura', !auraLigada);
+  aura.repouso(auraLigada);
+}
+
+// Juntar as mãos (palma com palma, lado a lado, paradas ~0,6 s) desliga a aura.
+// Mãos paralelas: não se confunde com o T, que é com as mãos cruzadas.
+let juntasDesde = 0;
+let desligouEm = 0;
+function gestoJuntar(maos, agora) {
+  if (!auraLigada || maos.length < 2 || agora - desligouEm < 1500) { juntasDesde = 0; return false; }
+  const [m1, m2] = maos;
+  const d = Math.hypot(m1[9].x - m2[9].x, m1[9].y - m2[9].y);
+  const angulo = (m) => Math.atan2(m[9].y - m[0].y, m[9].x - m[0].x);
+  const paralelas = Math.abs(Math.cos(angulo(m1) - angulo(m2))) > 0.87;
+  if (d < 0.14 && paralelas) {
+    juntasDesde = juntasDesde || agora;
+    if (agora - juntasDesde >= 600) {
+      juntasDesde = 0;
+      desligouEm = agora;
+      window.__TAURI__.core.invoke('definir_aura', { visivel: false }).catch(() => {});
+      mostrar('teko', 'Aura desligada. Estale os dedos pra chamar de novo.', 2500);
+      return true;
+    }
+  } else {
+    juntasDesde = 0;
+  }
+  return false;
 }
 
 async function restaurarAura() {
@@ -1069,7 +1090,7 @@ async function ligarGestosAgora() {
         }
         // Diagonal centraliza a aura; desligado logo depois do T (aí descolar é abrir o mapa).
         const depoisDoT = gestosEmT || (gestosBase != null && performance.now() - gestosInicio < 2500);
-        if (!depoisDoT && !gestosMapaAberto && gestoDiagonal(detectedHands, performance.now())) {
+        if (!depoisDoT && !gestosMapaAberto && (gestoDiagonal(detectedHands, performance.now()) || gestoJuntar(detectedHands, performance.now()))) {
           if (gestosSolicitados) gestosFrame = requestAnimationFrame(animate);
           return;
         }
