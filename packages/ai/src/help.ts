@@ -24,7 +24,7 @@ export const AJUDA: SecaoAjuda[] = [
   {
     titulo: 'Gestos (câmera, liga no menu da barra)',
     itens: [
-      { como: 'fazer um T com as mãos e afastar', faz: 'abre o mapa (o T não precisa ser perfeito)' },
+      { como: 'fazer um T com as mãos e descolar', faz: 'abre o mapa (o T não precisa ser perfeito; descolar um pouco já basta)' },
       { como: 'juntar as mãos e segurar meio segundo', faz: 'fecha o mapa (afastar e juntar também fecha)' },
       { como: 'pinça (polegar no indicador)', faz: 'confirma quando ele pergunta "Posso…?"' },
       { como: 'minimizar o mapa', faz: 'volta pro Teko' },
