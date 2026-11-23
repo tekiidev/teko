@@ -90,7 +90,7 @@ Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, 
 - "Teko, qual a capital do Maranhão?" numa frase só já vai direto
 - "Teko" sozinho: um bipe, e ele espera você falar (termina quando você para)
 - **Abrir junto com o Mac**: no menu da barra. Ao abrir, o app sobe sozinho o servidor do Teko e a voz clonada (se estiver instalada) quando eles não estiverem rodando; logs em `data/logs/`. Ao sair, encerra só o que ele mesmo abriu
-- **Estalo de dedos** também chama: precisa ser um estalo agudo e sozinho, então voz, batida na mesa, digitação e estalos em ritmo (música) não disparam. Desliga em "Ligar com estalo de dedos" no menu da barra
+- **Estalo de dedos** também chama: precisa ser um estalo agudo e sozinho, então voz, batida na mesa, digitação e estalos em ritmo (música) não disparam. Desliga em "Ligar com estalo de dedos" no menu da barra O estalo também liga a aura, que fica na tela (parada, girando devagar); juntar as mãos (palma com palma) desliga
 - "Teko, abre o Spotify": abre apps instalados pelo nome (Mac, Linux e Windows), sem aprovação, só o que estiver instalado; a resposta diz se ele viu o app abrir
 - **Mover a aura**: pinça com uma mão segura e arrasta; pinça com as duas mãos afastando ou aproximando troca entre 3 tamanhos (pequena, padrão, grande), com a câmera acompanhando. A posição fica salva; "Centralizar aura" no menu da barra volta pro meio
 - **Ilha no notch**: no topo da tela, colada no notch da câmera. Parada, some no notch; em conversa, cresce com o estado e a legenda; com o mouse em cima, abre Falar, Mapa, Parar, um campo pra pedir digitando e o gasto do dia. Sem notch, vira uma pílula pequena no topo. Liga e desliga no menu da barra
