@@ -4,6 +4,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ilha;
+
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::webview::{PermissionKind, PermissionResponse};
@@ -150,6 +152,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(GestoAtivo(Arc::clone(&gesto_ativo)))
+        .manage(ilha::AreaIlha::default())
         .on_window_event(move |window, event| {
             // Minimizar o mapa = voltar pro Teko: fecha a janela (o Destroyed abaixo traz a aura de volta).
             // No macOS nem sempre vem Resized ao minimizar; perder o foco sempre vem, então confere
@@ -185,7 +188,7 @@ fn main() {
             PermissionKind::Camera | PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         })
-        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool])
+        .invoke_handler(tauri::generate_handler![voice_local_request, open_context_map, close_context_map, definir_esc, chat_stream, approve_tool, ilha::ilha_info, ilha::ilha_area])
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -212,15 +215,24 @@ fn main() {
                 let _ = aura.set_ignore_cursor_events(true);
             }
 
+            // Ilha no notch: mede o notch na thread principal (o AppKit exige) e cria a janela.
+            app.manage(ilha::medir_notch());
+            if let Err(err) = ilha::criar(app.handle()) {
+                eprintln!("[Teko] não consegui criar a ilha: {err}");
+            }
+            ilha::vigiar_mouse(app.handle().clone());
+
             // Escuta do "Teko": ligada ao abrir; desmarcar desliga o microfone.
             let escuta = CheckMenuItem::with_id(app, "escuta", "Ativar falando \"Teko\"", true, true, None::<&str>)?;
             let mapa = MenuItem::with_id(app, "mapa", "Abrir mapa neural", true, None::<&str>)?;
             let gestos = CheckMenuItem::with_id(app, "gestos", "Reconhecer gesto T automaticamente (câmera)", true, true, None::<&str>)?;
+            let ilha_item = CheckMenuItem::with_id(app, "ilha", "Mostrar ilha no notch", true, true, None::<&str>)?;
             let dica = MenuItem::with_id(app, "dica", "Ou segure ⌥ Espaço pra falar", false, None::<&str>)?;
             let sair = MenuItem::with_id(app, "sair", "Sair do Teko", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&escuta, &mapa, &gestos, &dica, &sair])?;
+            let menu = Menu::with_items(app, &[&escuta, &mapa, &gestos, &ilha_item, &dica, &sair])?;
             let escuta_menu = escuta.clone();
             let gestos_menu = gestos.clone();
+            let ilha_menu = ilha_item.clone();
             let gesto_ativo_menu = Arc::clone(&gesto_ativo);
             // Ícone da barra no estilo do macOS (Bluetooth, Wi-Fi): desenho só em preto com fundo
             // transparente, marcado como template; o sistema pinta de branco ou preto conforme a barra.
@@ -240,6 +252,11 @@ fn main() {
                     "escuta" => {
                         let ligada = escuta_menu.is_checked().unwrap_or(false);
                         let _ = app.emit("escuta", ligada);
+                    }
+                    "ilha" => {
+                        if let Some(janela) = app.get_webview_window("ilha") {
+                            let _ = if ilha_menu.is_checked().unwrap_or(true) { janela.show() } else { janela.hide() };
+                        }
                     }
                     "gestos" => {
                         let ligados = gestos_menu.is_checked().unwrap_or(false);

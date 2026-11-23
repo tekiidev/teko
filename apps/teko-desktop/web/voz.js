@@ -19,7 +19,19 @@ const ROTAS_VOZ = {
   chat: `${API}/chat`,
   speak: `${API}/voice/speak`,
 };
-const aura = criarAura(document.getElementById('aura'));
+const auraTela = criarAura(document.getElementById('aura'));
+// Tudo que muda na aura (estado e legenda) também vai pra ilha do notch, por evento.
+const avisarIlha = (nome, dado) => window.__TAURI__?.event?.emit(nome, dado).catch(() => {});
+const aura = {
+  get estado() { return auraTela.estado; },
+  set estado(valor) {
+    if (auraTela.estado !== valor) avisarIlha('teko-estado', valor);
+    auraTela.estado = valor;
+  },
+  formaT: (v) => auraTela.formaT(v),
+  janelaCamera: (v) => auraTela.janelaCamera(v),
+  volume: (v) => auraTela.volume(v),
+};
 const legenda = document.getElementById('legenda');
 
 // Detector de fala (VAD) por volume. Um quadro = 4096 amostras (~85 ms a 48 kHz).
@@ -76,6 +88,7 @@ function statusGesto(texto) {
 
 function mostrar(quem, texto, apagarEm = 0) {
   const versao = ++versaoLegenda;
+  avisarIlha('teko-legenda', { quem, texto: texto || '', apagarEm });
   if (!texto) {
     legenda.classList.remove('on');
     return;
@@ -705,6 +718,7 @@ function soltou() {
 
 function mudarEscuta(ligada) {
   escuta = ligada;
+  avisarIlha('teko-escuta', ligada);
   if (!ligada && modo === 'vigia') modo = 'parado';
   trecho = null;
   ajustarMic();
@@ -893,6 +907,23 @@ if (window.__TAURI__) {
   listen('gestos', ({ payload }) => (payload ? ligarGestos() : desligarGestos()));
   listen('cancelar', () => cancelarConversa());
   listen('mapa-aberto', () => desligarGestos(true));
+  // A ilha abre depois da aura: quando ela avisa que está pronta, manda o estado atual.
+  listen('ilha-pronta', () => { avisarIlha('teko-escuta', escuta); avisarIlha('teko-estado', aura.estado); });
+  // Ilha do notch: botão Falar (ouve até você parar) e pedido digitado (mesmo fluxo da voz).
+  listen('ilha-falar', async () => {
+    if (modo === 'gravando') return terminarGravacao();
+    ciclo += 1;
+    modo = 'parado';
+    if (await abrirMic()) comecarGravacao({ auto: true });
+  });
+  listen('ilha-pedido', ({ payload }) => {
+    const texto = String(payload || '').trim();
+    if (!texto) return;
+    if (modo === 'gravando' || modo === 'ocupado') cancelarConversa();
+    const meu = ++ciclo;
+    mostrar('você', texto);
+    responder(texto, meu);
+  });
 } else {
   // Fora do Tauri (navegador, pra testar): barra de espaço faz o papel do atalho.
   window.addEventListener('keydown', (e) => e.code === 'Space' && !e.repeat && apertou());
