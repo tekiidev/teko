@@ -369,8 +369,17 @@ async function responder(texto, meu) {
     const resposta = await perguntar(texto, meu);
     if (resposta == null || meu !== ciclo) return;
     mostrar('teko', resposta);
-    await falar(resposta, meu);
-    if (meu === ciclo) mostrar('teko', resposta, 2500);
+    try {
+      await falar(resposta, meu);
+      if (meu === ciclo) mostrar('teko', resposta, 2500);
+    } catch (err) {
+      // A resposta veio; só a voz falhou. Deixa o texto na tela e explica o porquê.
+      const msg = String(err?.message || err);
+      const aviso = /voz clonada fora do ar|4781|ECONNREFUSED/.test(msg)
+        ? 'Sua voz está desligada. Rode: npm run voz:clone'
+        : 'Não consegui falar agora.';
+      if (meu === ciclo) mostrar('teko', `${resposta}\n\n(${aviso})`, 9000);
+    }
   } catch (err) {
     return erro(err, meu);
   }
@@ -440,6 +449,10 @@ async function gerarFala(trecho) {
   return audio().decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
+// Efeito metálico de robô por cima da voz. Desligado: o Teki quer a voz clonada idêntica.
+// Pra ligar: localStorage.setItem('teko.vozMetalica', '1') no console do app.
+const VOZ_METALICA = (() => { try { return localStorage.getItem('teko.vozMetalica') === '1'; } catch { return false; } })();
+
 function tocar(som) {
   const c = audio();
   const fonte = c.createBufferSource();
@@ -448,9 +461,9 @@ function tocar(som) {
   const metal = c.createGain();
   const portadora = c.createOscillator();
   fonte.buffer = som;
-  // Ring modulation em paralelo com a voz seca: timbre claramente sintético, ainda inteligível.
-  seco.gain.value = 0.65;
-  metal.gain.value = 0.35;
+  // Ring modulation em paralelo com a voz seca (só se VOZ_METALICA estiver ligada).
+  seco.gain.value = VOZ_METALICA ? 0.65 : 1;
+  metal.gain.value = VOZ_METALICA ? 0.35 : 0;
   portadora.frequency.value = 42;
   portadora.connect(modulador.gain);
   fonte.connect(seco);
