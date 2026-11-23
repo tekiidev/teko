@@ -61,6 +61,15 @@ export const PROVIDERS = [
     keyEnv: 'XAI_API_KEY',
   },
   {
+    // Groq (com q) não é o Grok da xAI: roda modelos abertos em chips próprios, bem rápido,
+    // com plano grátis limitado por minuto e por dia.
+    id: 'groq',
+    label: 'Groq',
+    kind: 'openai',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    keyEnv: 'GROQ_API_KEY',
+  },
+  {
     id: 'openrouter',
     label: 'OpenRouter',
     kind: 'openai',
@@ -78,6 +87,10 @@ export const PROVIDERS = [
 
 // priceIn / priceOut em USD por 1M tokens (aproximado, edite conforme seu plano).
 export const MODELS = [
+  // Groq: preço do plano pago; no plano grátis não cobra (só tem limite de uso).
+  { id: 'groq/gpt-oss-120b', provider: 'groq', model: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (Groq)', ctx: 131072, priceIn: 0.15, priceOut: 0.75, tags: ['code', 'docs', 'bug', 'economic', 'free'] },
+  { id: 'groq/gpt-oss-20b', provider: 'groq', model: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (Groq)', ctx: 131072, priceIn: 0.075, priceOut: 0.3, tags: ['docs', 'bug', 'economic', 'free'] },
+  { id: 'groq/qwen3.8-27b', provider: 'groq', model: 'qwen/qwen3.8-27b', label: 'Qwen3.8 27B (Groq)', ctx: 131072, priceIn: 0.29, priceOut: 0.59, tags: ['code', 'bug', 'economic', 'free'] },
   // Anthropic (thinking adaptativo sempre ligado; Haiku 5.5 passa a US$ 0,50/2,50 acima de 100K tokens de prompt)
   { id: 'anthropic/claude-opus-5-5', provider: 'anthropic', model: 'claude-opus-5-5', label: 'Claude Opus 5.5', ctx: 1000000, priceIn: 4, priceOut: 20, tags: ['plan', 'review', 'code'] },
   { id: 'anthropic/claude-sonnet-5-5', provider: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', ctx: 1000000, priceIn: 2, priceOut: 10, tags: ['code', 'docs', 'review', 'plan'] },
@@ -150,6 +163,12 @@ export const CHAIN_ADDITIONS: { id: string; profile: string; model: string; befo
   { id: 'code-gemini-flash-lite', profile: 'code', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'bug-gemini-flash-lite', profile: 'bug', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest', 'ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'terse-gemini-flash-lite', profile: 'terse', model: 'google/gemini-flash-lite-latest', before: ['google/gemini-flash-latest'] },
+  // Groq: grátis e rápido, entra antes dos Gemini grátis nas filas econômicas e na voz.
+  { id: 'voice-groq-gpt-oss', profile: 'voice', model: 'groq/gpt-oss-120b', before: ['openai/gpt-5.4-nano', 'google/gemini-flash-lite-latest'] },
+  { id: 'terse-groq-gpt-oss', profile: 'terse', model: 'groq/gpt-oss-120b', before: ['google/gemini-flash-lite-latest', 'google/gemini-flash-latest'] },
+  { id: 'bug-groq-gpt-oss', profile: 'bug', model: 'groq/gpt-oss-120b', before: ['google/gemini-flash-lite-latest', 'google/gemini-flash-latest'] },
+  { id: 'docs-groq-gpt-oss', profile: 'docs', model: 'groq/gpt-oss-120b', before: ['google/gemini-flash-lite-latest', 'google/gemini-flash-latest'] },
+  { id: 'code-groq-gpt-oss', profile: 'code', model: 'groq/gpt-oss-120b', before: ['google/gemini-flash-lite-latest', 'google/gemini-flash-latest', 'ollama/qwen3.8:27b'] },
   { id: 'code-gemini-flash', profile: 'code', model: 'google/gemini-flash-latest', before: ['ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
   { id: 'bug-gemini-flash', profile: 'bug', model: 'google/gemini-flash-latest', before: ['ollama/qwen3.8:27b', 'ollama/qwen3:8b'] },
 ];
