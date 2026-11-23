@@ -31,8 +31,18 @@ const aura = {
   },
   formaT: (v) => auraTela.formaT(v),
   janelaCamera: (v) => auraTela.janelaCamera(v),
-  volume: (v) => auraTela.volume(v),
+  volume: (v) => {
+    auraTela.volume(v);
+    // A ilha anima com o volume (LED quando você fala, barras quando ele fala): ~12 por segundo basta.
+    const agora = performance.now();
+    if (agora - volumeIlha.em > 80 && (v > 0.01 || volumeIlha.v > 0.01)) {
+      volumeIlha.em = agora;
+      volumeIlha.v = v;
+      avisarIlha('teko-volume', Math.min(1, v));
+    }
+  },
 };
+const volumeIlha = { em: 0, v: 0 };
 const legenda = document.getElementById('legenda');
 
 // Detector de fala (VAD) por volume. Um quadro = 4096 amostras (~85 ms a 48 kHz).

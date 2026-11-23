@@ -1,8 +1,10 @@
 // Ilha do Teko no notch do MacBook.
-// Parada, é uma pílula preta do tamanho do notch (some nele). Em conversa cresce e mostra
-// o estado e a legenda. Com o mouse em cima abre o painel: falar, mapa, parar e um campo
-// pra pedir digitando. Quem conversa de verdade é a aura (voz.js); a ilha só espelha o
-// estado dela e manda pedidos por evento.
+// Parada, é uma pílula preta do tamanho do notch (some nele). Em conversa cresce e anima:
+//   você falando -> LED azul contornando, mais forte quanto mais alto
+//   pensando     -> brilho correndo na borda e três pontos
+//   Teko falando -> barras seguindo a voz dele
+// Com o mouse em cima abre o painel: falar, mapa, parar e um campo pra pedir digitando.
+// Quem conversa de verdade é a aura (voz.js); a ilha só espelha o estado e manda pedidos.
 
 const API = 'http://127.0.0.1:4780/api';
 const { invoke } = window.__TAURI__.core;
@@ -10,12 +12,11 @@ const { listen, emit } = window.__TAURI__.event;
 
 const ilha = document.getElementById('ilha');
 const legenda = document.getElementById('legenda');
-const estadoTxt = document.getElementById('estado');
 const pedido = document.getElementById('pedido');
+const barras = [...document.querySelectorAll('.barras i')];
 
-const NOMES = { ouvindo: 'ouvindo', pensando: 'pensando', falando: 'falando' };
-const LARGURA_ATIVA = 360; // em conversa
-const LARGURA_PAINEL = 380; // com o mouse em cima
+const LARGURA_ATIVA = 300; // em conversa
+const LARGURA_PAINEL = 340; // com o mouse em cima
 
 let notch = { tem: false, largura: 160, altura: 24 };
 let estado = 'parado';
@@ -23,13 +24,15 @@ let temLegenda = false;
 let aberta = false;
 let apagarLegenda = 0;
 let fecharPainel = 0;
+let volume = 0;
+let zerarVolume = 0;
 
 function tamanho() {
   const base = notch.tem ? notch.largura : 160;
-  if (aberta) return { w: LARGURA_PAINEL, h: notch.altura + 128 };
+  if (aberta) return { w: Math.max(LARGURA_PAINEL, base + 40), h: notch.altura + 142 };
   if (estado !== 'parado' || temLegenda) {
-    const extra = temLegenda ? Math.min(110, legenda.scrollHeight + 4) : 0;
-    return { w: Math.max(base + 120, LARGURA_ATIVA), h: notch.altura + extra };
+    const extra = temLegenda ? Math.min(110, legenda.scrollHeight + 2) : 0;
+    return { w: Math.max(base + 100, LARGURA_ATIVA), h: notch.altura + extra };
   }
   // Parada: no notch, do tamanho dele; sem notch, uma faixa fina pra achar com o mouse.
   return notch.tem ? { w: base, h: notch.altura } : { w: base, h: 8 };
@@ -40,12 +43,27 @@ function redesenhar() {
   ilha.classList.toggle('ativa', estado !== 'parado');
   ilha.classList.toggle('com-legenda', temLegenda && !aberta);
   ilha.classList.toggle('aberta', aberta);
-  estadoTxt.textContent = NOMES[estado] || '';
   const { w, h } = tamanho();
   ilha.style.width = `${w}px`;
   ilha.style.height = `${h}px`;
   // O Rust usa essa área pra decidir onde o mouse para na ilha e onde passa direto.
   invoke('ilha_area', { largura: w, altura: h }).catch(() => {});
+}
+
+/** Volume 0..1: acende o LED (você falando) e mexe as barras (Teko falando). */
+function aplicarVolume(v) {
+  volume = v;
+  ilha.style.setProperty('--vol', v.toFixed(3));
+  const falando = estado === 'falando';
+  barras.forEach((b, i) => {
+    // Cada barra com um peso diferente, pra parecer onda e não um bloco subindo junto.
+    const peso = [0.55, 0.85, 1, 0.8, 0.5][i];
+    const ruido = 0.75 + Math.random() * 0.5;
+    b.style.height = `${falando ? Math.max(3, Math.min(16, 3 + v * 15 * peso * ruido)) : 3}px`;
+  });
+  // Sem novos volumes por um tempo, volta ao repouso.
+  clearTimeout(zerarVolume);
+  if (v > 0) zerarVolume = setTimeout(() => aplicarVolume(0), 300);
 }
 
 async function gastoHoje() {
@@ -55,9 +73,9 @@ async function gastoHoje() {
     const custo = Number(u?.today?.cost || 0);
     const poupado = Number(u?.today?.saved || 0);
     const fmt = (n) => (n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
-    document.getElementById('gasto').textContent = `${fmt(custo)} · poupou ${fmt(poupado)}`;
+    document.getElementById('gasto').textContent = poupado > 0 ? `${fmt(custo)} · poupou ${fmt(poupado)}` : fmt(custo);
   } catch {
-    document.getElementById('gasto').textContent = 'Teko fora do ar (npm start)';
+    document.getElementById('gasto').textContent = 'servidor fora do ar';
   }
 }
 
@@ -76,6 +94,16 @@ function abrir(sim) {
   redesenhar();
 }
 
+function enviar() {
+  const texto = pedido.value.trim();
+  if (!texto) return;
+  pedido.value = '';
+  emit('ilha-pedido', texto);
+  aberta = false;
+  pedido.blur();
+  redesenhar();
+}
+
 listen('ilha-mouse', ({ payload }) => {
   clearTimeout(fecharPainel);
   if (payload) abrir(true);
@@ -84,25 +112,24 @@ listen('ilha-mouse', ({ payload }) => {
 
 listen('teko-estado', ({ payload }) => {
   estado = payload || 'parado';
+  if (estado !== 'falando') aplicarVolume(estado === 'ouvindo' ? volume : 0);
   redesenhar();
 });
+
+listen('teko-volume', ({ payload }) => aplicarVolume(Number(payload) || 0));
 
 listen('teko-legenda', ({ payload }) => {
   clearTimeout(apagarLegenda);
   const { quem, texto, apagarEm } = payload || {};
-  temLegenda = Boolean(texto);
-  legenda.innerHTML = '';
-  if (texto) {
-    const q = document.createElement('span');
-    q.className = 'quem';
-    q.textContent = quem || 'teko';
-    legenda.append(q, document.createTextNode(texto));
-    if (apagarEm) apagarLegenda = setTimeout(() => { temLegenda = false; redesenhar(); }, apagarEm);
-  }
+  temLegenda = Boolean(texto) && texto !== '…';
+  // Sem rótulo: o que você disse aparece mais apagado, a resposta do Teko em branco.
+  legenda.classList.toggle('sua', quem === 'você' || quem === 'ouvi' || quem === 'ouvindo');
+  legenda.textContent = temLegenda ? texto : '';
+  if (temLegenda && apagarEm) apagarLegenda = setTimeout(() => { temLegenda = false; redesenhar(); }, apagarEm);
   redesenhar();
 });
 
-listen('teko-escuta', ({ payload }) => document.body.classList.toggle('escutando', Boolean(payload)));
+listen('teko-escuta', ({ payload }) => ilha.classList.toggle('escutando', Boolean(payload)));
 
 // Retorno na hora: a ilha já mostra o estado enquanto a aura liga o microfone.
 document.getElementById('falar').onclick = () => {
@@ -117,21 +144,14 @@ document.getElementById('cancelar').onclick = () => {
   emit('cancelar');
 };
 document.getElementById('mapa').onclick = () => invoke('open_context_map').catch(() => {});
+document.getElementById('enviar').onclick = enviar;
 pedido.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { pedido.value = ''; abrir(false); return; }
-  if (e.key !== 'Enter') return;
-  const texto = pedido.value.trim();
-  if (!texto) return;
-  pedido.value = '';
-  emit('ilha-pedido', texto);
-  aberta = false;
-  pedido.blur();
-  redesenhar();
+  if (e.key === 'Enter') enviar();
 });
 
 const info = await invoke('ilha_info').catch(() => null);
 if (info) notch = { tem: Boolean(info.tem_notch), largura: Math.round(info.largura), altura: Math.round(info.altura) };
-document.body.classList.toggle('sem-notch', !notch.tem);
 document.documentElement.style.setProperty('--notch-h', `${notch.altura}px`);
 redesenhar();
 emit('ilha-pronta');
