@@ -71,6 +71,14 @@ Sem `npm link`: `npm run teko -- "pergunta"`.
 - Linha terminando em `\` continua na próxima; Ctrl+C interrompe a resposta
 - `NO_COLOR=1` desliga as cores
 
+## Ajuda: comandos e gestos
+
+Tudo que dá pra fazer (voz, gestos, mapa, terminal, delegar, skills) fica numa lista só, em `packages/ai/src/help.ts`:
+
+- Terminal: `teko ajuda`, `teko --help` ou `/help` na conversa
+- Mapa: botão **?** ou tecla **?**
+- `GET /api/help` devolve a lista em JSON
+
 ## Voz no Mac
 
 Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, responde e fala, com uma aura de pixels por cima da tela que muda quando ele ouve, pensa e fala.

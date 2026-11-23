@@ -261,6 +261,7 @@ async function mountContextMap() {
           <input id="map-search" type="search" placeholder="Buscar em projetos e contexto…" aria-label="Buscar contexto" />
           ${native ? '<button class="btn" id="map-close">Fechar mapa</button>' : '<button class="btn" id="map-camera">◎ Ativar gesto T</button>'}
           <button class="btn" id="map-refresh">↻ Atualizar</button>
+          <button class="btn" id="map-help" aria-label="Ajuda: comandos e gestos" title="Comandos e gestos (?)">?</button>
         </div>
       </div>
       <div class="map-workspace">
@@ -288,6 +289,7 @@ async function mountContextMap() {
           <div class="map-zoom"><button id="map-settings" aria-label="Configurações do grafo" aria-expanded="false">⚙</button><button id="map-zoom-in" aria-label="Aproximar">+</button><button id="map-zoom-out" aria-label="Afastar">−</button><button id="map-fit" aria-label="Enquadrar mapa">⌖</button></div>
         </div>
         <aside class="map-inspector" id="map-inspector"></aside>
+        <div class="map-help" id="map-help-panel" hidden role="dialog" aria-label="Comandos e gestos do Teko"></div>
       </div>
       <div class="map-legend"><strong class="map-legend-title">INFINITY PROTOCOL</strong>${groups.map((g) => `<button type="button" class="map-group" data-group="${g.type}"><i class="${g.type}"></i> ${g.gem} · ${g.label}</button>`).join('')}<span class="map-legend-archive"><span class="ego"><i></i> Ego</span><span class="death"><i></i> Morte</span></span><span class="map-local-note">Busca e gestos rodam no Mac; nenhum vídeo é enviado.</span></div>
     </div>`;
@@ -660,6 +662,31 @@ async function mountContextMap() {
   canvas.addEventListener('wheel', (event) => { event.preventDefault(); const p = localPoint(event); zoomAt(Math.exp(-event.deltaY * 0.0015), p.x, p.y); }, { passive: false });
   $('#map-zoom-in').onclick = () => zoomAt(1.2); $('#map-zoom-out').onclick = () => zoomAt(0.83); $('#map-fit').onclick = fitMap;
   if ($('#map-close')) $('#map-close').onclick = () => window.__TAURI__?.core?.invoke('close_context_map');
+
+  // Ajuda: mesma lista do /help do terminal (vem de @teko/ai/help pelo /api/help).
+  async function toggleHelp(force) {
+    const panel = $('#map-help-panel');
+    if (!panel) return;
+    const show = force ?? panel.hidden;
+    if (show && !panel.dataset.loaded) {
+      try {
+        const sections = await api('/api/help');
+        panel.innerHTML = `<div class="map-help-head"><h3>Tudo que dá pra fazer no Teko</h3><button class="btn sm" id="map-help-close" aria-label="Fechar ajuda">✕</button></div>` +
+          sections.map((sec) => `<section><h4>${esc(sec.titulo)}</h4><dl>${sec.itens.map((i) => `<dt>${esc(i.como)}</dt><dd>${esc(i.faz)}</dd>`).join('')}</dl></section>`).join('');
+        panel.dataset.loaded = '1';
+        $('#map-help-close').onclick = () => toggleHelp(false);
+      } catch (err) {
+        panel.innerHTML = `<p>Não consegui carregar a ajuda: ${esc(err.message || String(err))}</p>`;
+      }
+    }
+    panel.hidden = !show;
+    $('#map-help')?.setAttribute('aria-expanded', String(show));
+  }
+  $('#map-help').onclick = () => toggleHelp();
+  window.addEventListener('keydown', (e) => {
+    if (e.key === '?' && !/input|textarea/i.test(e.target?.tagName || '')) toggleHelp();
+    else if (e.key === 'Escape' && !$('#map-help-panel')?.hidden) { e.stopImmediatePropagation(); toggleHelp(false); }
+  }, true);
   // No app nativo, Esc também fecha o mapa.
   if (native) {
     const onEsc = (e) => { if (e.key === 'Escape') window.__TAURI__?.core?.invoke('close_context_map'); };

@@ -21,6 +21,7 @@ import { runChat, planRoute, modelHealth, budgetStatus, resolveKey } from '@teko
 import { cacheSettings, cacheStats, clearCache, pruneCache } from '@teko/ai/response-cache';
 import { compressionSettings } from '@teko/ai/compress';
 import { runTurn } from '@teko/ai/chat';
+import { AJUDA } from '@teko/ai/help';
 import { detectWake, speak, transcribe, voiceStatus } from '@teko/ai/voice';
 import { deleteSkill, findImportable, getSkill, importSkills, listSkills } from '@teko/ai/skills';
 import { syncModels } from '@teko/ai/sync';
@@ -498,6 +499,7 @@ async function dispatch(req, res) {
   }
 
   if (resource === 'bootstrap' && method === 'GET') return json(res, 200, publicBootstrap());
+  if (resource === 'help' && method === 'GET') return json(res, 200, AJUDA);
   if (resource === 'usage' && method === 'GET') return json(res, 200, usageSummary());
   if (resource === 'route' && method === 'GET') {
     return json(
