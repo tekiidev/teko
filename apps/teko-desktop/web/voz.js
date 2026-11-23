@@ -776,7 +776,7 @@ async function ligarGestos() {
       gestosLandmarker = await vision.HandLandmarker.createFromOptions(files, opcoes('CPU'));
     }
     if (!gestosSolicitados) return desligarGestos(true);
-    mostrar('teko', 'Gestos prontos. Junte as mãos abertas e afaste para abrir o mapa.');
+    mostrar('teko', 'Gestos prontos. Forme um T com as mãos e afaste para abrir o mapa.');
     statusGesto('Gestos ligados · mostre as duas mãos');
 
     // ~8 quadros por segundo bastam pra gesto (a 60 quadros/s ele usava ~80% da GPU e
@@ -822,8 +822,9 @@ async function ligarGestos() {
           const angleA = Math.atan2(hands[0][9].y - hands[0][0].y, hands[0][9].x - hands[0][0].x);
           const angleB = Math.atan2(hands[1][9].y - hands[1][0].y, hands[1][9].x - hands[1][0].x);
           // Começo do gesto: mãos abertas próximas (em T ou lado a lado). Depois é só afastar.
-          const emT = distance < .28 && Math.abs(Math.cos(angleA - angleB)) < .62;
-          const formsT = emT || distance < .3;
+          // Só o T começa o gesto: mãos próximas e cruzadas. Tolerante: a partir de ~37° entre
+          // as mãos já conta (um T perfeito é 90°), mas mãos lado a lado (paralelas) não.
+          const formsT = distance < .3 && Math.abs(Math.cos(angleA - angleB)) < .8;
           const now = performance.now();
           if (gestosBase != null && now - gestosInicio < 4500 && distance > gestosBase + .12) {
             aura.formaT(false);
@@ -840,8 +841,8 @@ async function ligarGestos() {
             }
           } else if (formsT) {
             aura.formaT(true);
-            statusGesto('Mãos juntas · agora afaste para abrir o mapa');
-            if (!gestosEmT) mostrar('teko', 'Agora afaste as mãos para abrir o mapa.', 1800);
+            statusGesto('T reconhecido · agora afaste as mãos');
+            if (!gestosEmT) mostrar('teko', 'T reconhecido. Afaste as mãos para abrir o mapa.', 1800);
             gestosEmT = true;
             if (gestosBase == null || now - gestosInicio >= 4500) {
               gestosBase = distance;
@@ -851,11 +852,11 @@ async function ligarGestos() {
             gestosBase = null;
             aura.formaT(false);
             gestosEmT = false;
-            statusGesto('Junte as mãos abertas e depois afaste');
+            statusGesto('Forme um T com as mãos e depois afaste');
           } else {
             aura.formaT(false);
             gestosEmT = false;
-            statusGesto('Junte as mãos abertas e depois afaste');
+            statusGesto('Forme um T com as mãos e depois afaste');
           }
         } else if (hands.length < 2) {
           gestosBase = null;
