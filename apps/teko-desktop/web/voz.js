@@ -755,6 +755,23 @@ async function desligarGestos(silencioso = false) {
 // mudam o tamanho. Segurar ~0,25 s antes de pegar evita mexer sem querer.
 const AURA_GUARDADA = 'teko.aura.geo';
 const GANHO_MOVER = 1.6; // a mão anda pouco na frente da câmera; a aura anda mais na tela
+// Três tamanhos fixos: afastar as mãos sobe um, aproximar desce um.
+const AURA_BASE = { largura: 460, altura: 520 };
+const TAMANHOS_AURA = [
+  { nome: 'pequena', escala: 0.7 },
+  { nome: 'padrão', escala: 1 },
+  { nome: 'grande', escala: 1.35 },
+];
+const PASSO_AFASTAR = 1.3; // distância entre as pinças precisa crescer 30% pra subir um tamanho
+const PASSO_APROXIMAR = 0.77;
+/** Índice do tamanho mais próximo da largura atual. */
+const tamanhoAtual = (largura) => {
+  let melhor = 1;
+  TAMANHOS_AURA.forEach((t, i) => {
+    if (Math.abs(AURA_BASE.largura * t.escala - largura) < Math.abs(AURA_BASE.largura * TAMANHOS_AURA[melhor].escala - largura)) melhor = i;
+  });
+  return melhor;
+};
 let pegada = null; // { tipo, geo, p0, d0, estadoAntes }
 let pincaTipo = null;
 let pincaDesde = 0;
@@ -816,11 +833,23 @@ async function tratarPinca(maos, agora) {
     await aplicarGeo({ x: geo.x + dx, y: geo.y + dy, largura: geo.largura, altura: geo.altura });
   } else {
     const [a, b] = pincando.map(pontoPinca);
-    const escala = Math.min(1.8, Math.max(0.5, Math.hypot(a.x - b.x, a.y - b.y) / Math.max(pegada.d0, 0.01)));
-    const largura = geo.largura * escala;
-    const altura = geo.altura * escala;
-    // Cresce a partir do centro: o meio da aura fica no lugar.
-    await aplicarGeo({ x: geo.x + (geo.largura - largura) / 2, y: geo.y + (geo.altura - altura) / 2, largura, altura });
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const razao = d / Math.max(pegada.d0, 0.01);
+    const atual = tamanhoAtual(geo.largura);
+    const proximo = razao >= PASSO_AFASTAR ? atual + 1 : razao <= PASSO_APROXIMAR ? atual - 1 : atual;
+    if (proximo !== atual && proximo >= 0 && proximo < TAMANHOS_AURA.length) {
+      const t = TAMANHOS_AURA[proximo];
+      const largura = AURA_BASE.largura * t.escala;
+      const altura = AURA_BASE.altura * t.escala;
+      // Cresce a partir do centro: o meio da aura fica no lugar.
+      const novo = { x: geo.x + (geo.largura - largura) / 2, y: geo.y + (geo.altura - altura) / 2, largura, altura };
+      posicionando = false; // troca de tamanho não pode ser pulada
+      await aplicarGeo(novo);
+      // Nova base: dá pra continuar afastando pra subir mais um.
+      pegada.geo = { ...geo, ...novo };
+      pegada.d0 = d;
+      statusGesto(`Aura ${t.nome}`);
+    }
   }
   return true;
 }
@@ -841,7 +870,8 @@ async function ligarGestos() {
   const previewCtx = preview?.getContext('2d');
   let ultimoQuadroPrevia = 0;
   const dpr = window.devicePixelRatio || 1;
-  if (preview) { preview.width = Math.round(272 * dpr); preview.height = Math.round(204 * dpr); }
+  // Resolução do maior tamanho da aura, pra prévia ficar nítida em qualquer um dos três.
+  if (preview) { preview.width = Math.round(272 * TAMANHOS_AURA.at(-1).escala * dpr); preview.height = Math.round(204 * TAMANHOS_AURA.at(-1).escala * dpr); }
   let etapa = 'pedir permissão para a câmera';
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('câmera indisponível neste app');

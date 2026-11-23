@@ -29,7 +29,9 @@
       opacity: 0!important; pointer-events: none!important; clip-path: inset(50%)!important;
     }
     #gestos-preview {
-      position: fixed; inset: auto; left: 50%; top: 50%; width: 272px; height: 204px;
+      /* Proporcional à janela: cresce e diminui junto com a aura (no padrão dá 272x204). */
+      position: fixed; inset: auto; left: 50%; top: 50%;
+      width: calc(min(100vw, 100vh) * 0.591); height: calc(min(100vw, 100vh) * 0.443);
       visibility: hidden; opacity: 0; pointer-events: none;
       transform: translate(-50%, -50%) scaleX(-1);
       z-index: 4; transition: opacity 180ms;
