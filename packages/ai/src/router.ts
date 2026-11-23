@@ -267,7 +267,7 @@ export async function* runChat({
   noCache = false,
 }) {
   const cfg = getSetting('router', {});
-  const activeTools = tools?.length && projectPath ? tools : null;
+  const activeTools = tools?.length ? tools : null;
 
   // Cache local: só sem ferramentas, porque aí a resposta depende só do que foi enviado.
   const cacheCfg = cacheSettings();
