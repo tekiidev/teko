@@ -13,7 +13,6 @@
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Node.js-22%20%7C%2024-339933?logo=node.js&logoColor=white" alt="Node.js 22 e 24" />
   <img src="https://img.shields.io/badge/Rust-Tauri%202-000000?logo=rust&logoColor=white" alt="Rust + Tauri 2" />
-  <img src="https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white" alt="Next.js 16" />
   <img src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" alt="SQLite FTS5" />
 </p>
 
@@ -23,7 +22,7 @@
   <a href="#como-funciona">Como funciona</a> ·
   <a href="#decisões-de-engenharia">Decisões</a> ·
   <a href="#voz-no-mac">Voz e gestos</a> ·
-  <a href="#cofu">Cofu</a>
+  <a href="https://github.com/tekiidev/cofu">Cofu</a>
 </p>
 
 > Sabe o Visão, que carrega o JARVIS, a Sexta-Feira, a E.D.I.T.H. e até o Idiota e o Você dentro do próprio código?
@@ -42,7 +41,6 @@ Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekii
 - 🛡️ **Segurança na prática**: escrita e comandos só com aprovação, ferramentas presas à pasta do projeto, segredos mascarados antes de sair do Mac, desfazer alterações, servidor só local com bloqueio de CSRF
 - 🎙️ **App desktop em Rust (Tauri 2)**: wake word e transcrição locais (whisper.cpp), voz clonada local em MLX, ilha no notch, comandos sem IA e detecção de estalo de dedos por análise de sinal
 - ✋ **Gestos por câmera (MediaPipe)**: abrir o mapa, mover e redimensionar a aura, aprovar com pinça, navegar com o dedo
-- 🧺 **Cofu**: app da feira em Next.js 16, PWA offline, que transforma texto ou voz em lista estruturada com saída validada por Zod
 
 **Em números:** monorepo TypeScript + Rust, 100+ testes automatizados (`node:test`), CI em Node 22 e 24 a cada PR, todo o trabalho em issues e PRs revisados.
 
@@ -102,7 +100,6 @@ flowchart LR
 | Revisor de outra empresa no fluxo multi-agente | Modelos da mesma família tendem a errar igual; outro fornecedor pega coisas diferentes |
 | Wake word, estalo e gestos sempre locais | Áudio e câmera não saem do Mac; só o texto da pergunta vai pro modelo |
 | Requisições do app desktop passam pelo Rust | O WebView bloqueia `fetch` de `tauri://` pra `http://`; o Rust faz a ponte com segurança |
-| IA do Cofu em serviço separado | O app nunca vê a chave da IA; sem o serviço, um leitor no aparelho monta a lista |
 
 ## Por que "Teko"
 
@@ -216,21 +213,7 @@ npm run voz:clone                               # deixe rodando junto com o npm 
 
 ## Cofu
 
-App da feira, para qualquer pessoa: fale ou escreva o que vai comprar e o Cofu monta a lista. Funciona offline (a IA só online). Fica em `apps/cofu` e é feito com o Teko.
-
-<p align="center"><img src="docs/cofu-fase-1.png" alt="Cofu" width="320" /></p>
-
-```bash
-npm run cofu              # http://localhost:4790
-```
-
-- Lista por texto ou voz (microfone do navegador); a IA devolve item, quantidade, unidade, categoria e preço estimado, validados com Zod
-- Sem internet ou se a IA falhar, um leitor simples no aparelho monta a lista mesmo assim
-- Tocar no item = ele cai no cofo; o cofo enche e muda de cor quando passa do orçamento
-- "Tem em casa" vai pra prateleira; "Nova feira" esvazia o cofo
-- Dados só no aparelho (IndexedDB)
-- A IA da lista roda num serviço separado (`COFU_SERVER_URL` e `COFU_SERVER_TOKEN` no `.env`); sem ele, o leitor simples monta a lista. O app nunca vê a chave da IA
-- Preços são estimativas da IA, não preços reais de mercado (isso é a fase 2)
+O **[Cofu](https://github.com/tekiidev/cofu)**, app da feira com IA que funciona offline, foi feito com o Teko e agora tem repositório próprio.
 
 ## Recursos em detalhe
 
@@ -286,9 +269,6 @@ apps/
   teko-desktop/           @teko/desktop: voz no Mac (Tauri) com a aura
     web/                  aura (canvas) e fluxo de voz
     src-tauri/            atalho global, janela transparente, barra de menu
-  cofu/                   @teko/cofu: app da feira (Next.js, PWA offline)
-    src/app/api/lista     rota da IA (só servidor)
-    src/lib/              leitor sem IA, IndexedDB, orçamento
 ```
 
 Os apps importam o orquestrador por subcaminho, por exemplo `@teko/ai/router`.
