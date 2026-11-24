@@ -2,15 +2,107 @@
   <img src="apps/teko/public/brand/teko-chrome.png" alt="Teko" width="520" />
 </p>
 
-# teko 🦾
+<p align="center">
+  <b>Orquestrador de IAs local: vários modelos, uma memória, voz e gestos no Mac.</b><br />
+  Seu JARVIS de código aberto. Várias IAs, uma memória, zero Ultron. 🦾
+</p>
 
-**Seu JARVIS de código aberto:** várias IAs, uma memória, zero Ultron.
+<p align="center">
+  <a href="https://github.com/tekiidev/teko/actions/workflows/ci.yml"><img src="https://github.com/tekiidev/teko/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licença-AGPL--3.0-blue" alt="AGPL-3.0" /></a>
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Node.js-22%20%7C%2024-339933?logo=node.js&logoColor=white" alt="Node.js 22 e 24" />
+  <img src="https://img.shields.io/badge/Rust-Tauri%202-000000?logo=rust&logoColor=white" alt="Rust + Tauri 2" />
+  <img src="https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" alt="SQLite FTS5" />
+</p>
+
+<p align="center">
+  <a href="#rodar">Rodar</a> ·
+  <a href="#destaques">Destaques</a> ·
+  <a href="#como-funciona">Como funciona</a> ·
+  <a href="#decisões-de-engenharia">Decisões</a> ·
+  <a href="#voz-no-mac">Voz e gestos</a> ·
+  <a href="#cofu">Cofu</a>
+</p>
 
 > Sabe o Visão, que carrega o JARVIS, a Sexta-Feira, a E.D.I.T.H. e até o Idiota e o Você dentro do próprio código?
-> O Teko é isso, só que pra IA no mundo real: Claude, GPT, Gemini, DeepSeek, Grok, Ollama e companhia morando no mesmo lugar, dividindo a mesma memória e passando a bola quando uma delas cai.
+> O Teko é isso, só que pra IA no mundo real: Claude, GPT, Gemini, DeepSeek, Grok, Groq, Ollama e companhia morando no mesmo lugar, dividindo a mesma memória e passando a bola quando uma delas cai.
 > O Ultron fica de fora. Nenhuma IA escreve um arquivo ou roda um comando sem você dizer "pode".
 
 Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekiidev)). Teki Industries.
+
+## Destaques
+
+- 🔀 **Roteamento entre 11 provedores de LLM**: Anthropic, OpenAI, Google, DeepSeek, Qwen, Zhipu, Moonshot, xAI, Groq, OpenRouter e Ollama, com fila por tipo de tarefa (código, arquitetura, revisão, bug, voz, econômico)
+- 🔁 **Fallback com cooldown por tipo de erro**: 429, cota, chave inválida, 5xx e timeout tiram o modelo da fila pelo tempo certo e o próximo assume na mesma resposta
+- 💸 **Engenharia de custo**: prompt caching, cache local de respostas, compressão do histórico, orçamento por modelo e orçamento de ferramentas (cerca de 32% menos tokens de definição de ferramentas no modelo local)
+- 🤝 **Multi-agente com revisão cruzada**: o Claude Code implementa e um modelo de outra empresa revisa o diff antes de entregar, com teto de custo por tarefa
+- 🧠 **Memória e RAG local**: índice FTS5 (BM25) sobre código, docs, decisões e bugs; o mesmo contexto vai pra Claude Code, Codex e Antigravity via **MCP**
+- 🛡️ **Segurança na prática**: escrita e comandos só com aprovação, ferramentas presas à pasta do projeto, segredos mascarados antes de sair do Mac, desfazer alterações, servidor só local com bloqueio de CSRF
+- 🎙️ **App desktop em Rust (Tauri 2)**: wake word e transcrição locais (whisper.cpp), voz clonada local em MLX, ilha no notch, comandos sem IA e detecção de estalo de dedos por análise de sinal
+- ✋ **Gestos por câmera (MediaPipe)**: abrir o mapa, mover e redimensionar a aura, aprovar com pinça, navegar com o dedo
+- 🧺 **Cofu**: app da feira em Next.js 16, PWA offline, que transforma texto ou voz em lista estruturada com saída validada por Zod
+
+**Em números:** monorepo TypeScript + Rust, 100+ testes automatizados (`node:test`), CI em Node 22 e 24 a cada PR, todo o trabalho em issues e PRs revisados.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+  subgraph Entradas
+    CLI[CLI teko]
+    WEB[Painel web]
+    MAC[App desktop<br/>voz, gestos, ilha]
+    MCP[Agentes via MCP<br/>Claude Code, Codex]
+  end
+
+  subgraph Core["@teko/ai (orquestrador)"]
+    CHAT[chat.ts<br/>turno completo]
+    CTX[Contexto + RAG<br/>FTS5 BM25]
+    ROUTER[router.ts<br/>fila, fallback,<br/>cooldown, orçamento]
+    PRIV[privacy.ts<br/>mascara segredos]
+    TOOLS[Ferramentas<br/>com aprovação e desfazer]
+    DB[(SQLite local<br/>node:sqlite)]
+  end
+
+  subgraph Modelos
+    CLOUD[Provedores na nuvem<br/>Anthropic, OpenAI, Google,<br/>Groq, DeepSeek...]
+    LOCAL[Ollama<br/>no próprio Mac]
+  end
+
+  CLI --> CHAT
+  WEB --> CHAT
+  MAC --> CHAT
+  MCP --> CTX
+  CHAT --> CTX --> ROUTER
+  ROUTER --> PRIV --> CLOUD
+  ROUTER --> LOCAL
+  ROUTER <--> TOOLS
+  CHAT <--> DB
+  CTX <--> DB
+```
+
+1. A mensagem chega por qualquer entrada (terminal, painel, voz ou MCP) e vira um turno em `chat.ts`
+2. O contexto do projeto e os trechos mais relevantes da busca local entram no prompt, com a parte estável no começo pra aproveitar o cache do provedor
+3. O router monta a fila do perfil, tira o que está sem chave, em cooldown ou sem orçamento, e tenta em ordem
+4. Antes de sair do Mac, segredos (chaves, tokens, PEM, JWT) são mascarados
+5. Ferramentas que alteram algo param e esperam sua aprovação; o que a IA escreveu pode ser desfeito
+6. Tokens, custo, cache e economia ficam registrados por chamada
+
+## Decisões de engenharia
+
+| Decisão | Por quê |
+| --- | --- |
+| `node:sqlite` em vez de um banco separado | Zero dependência nativa, tudo num arquivo local, FTS5 pronto pra busca |
+| FTS5 (BM25) antes de embeddings | Rápido, sem serviço externo e bom o bastante pra código; embeddings ficam como segunda perna |
+| TypeScript com `tsx`, sem etapa de build | Menos coisa pra quebrar; o typecheck roda na CI via Turborepo |
+| System prompt estável e dados variáveis na mensagem | Mantém o prefixo idêntico entre chamadas e aproveita o prompt caching dos provedores |
+| Cooldown por tipo de erro | Um 429 passa em minutos, cota esgotada leva horas; tratar igual desperdiça tentativas |
+| Revisor de outra empresa no fluxo multi-agente | Modelos da mesma família tendem a errar igual; outro fornecedor pega coisas diferentes |
+| Wake word, estalo e gestos sempre locais | Áudio e câmera não saem do Mac; só o texto da pergunta vai pro modelo |
+| Requisições do app desktop passam pelo Rust | O WebView bloqueia `fetch` de `tauri://` pra `http://`; o Rust faz a ponte com segurança |
+| IA do Cofu em serviço separado | O app nunca vê a chave da IA; sem o serviço, um leitor no aparelho monta a lista |
 
 ## Por que "Teko"
 
@@ -19,15 +111,8 @@ Feito no Maranhão por **Felipe Oliveira** ([@tekiidev](https://github.com/tekii
 - Em guarani, *teko* quer dizer algo como "modo de ser, jeito de viver"
 - A ideia é essa: um jeito só de trabalhar com todas as IAs, em vez de uma aba pra cada
 
-## O que o Teko faz
-
-- 🧠 **Uma memória pra todas:** projetos, decisões, bugs e documentos entram no contexto do modelo escolhido, e agentes como Claude Code, Codex e Antigravity podem consultar a mesma base via MCP
-- 🔁 **Troca de modelo sozinho:** se o modelo cai, estoura a cota ou dá timeout, o Teko tenta o próximo da fila
-- 💸 **Ajuda a controlar o gasto:** perfis com fila de modelos (incluindo um modo econômico), orçamento por modelo e registro de tokens e custo de cada conversa
-- 🛡️ **Segurança desde o começo:** roda local, as chaves ficam no banco da sua máquina, as ferramentas ficam presas à pasta do projeto e escrita ou execução pedem a sua aprovação
-- 🏠 **Local primeiro:** banco SQLite e busca rodam na sua máquina. O que você manda no chat vai para o provedor de IA que você configurou, sob os termos dele
-
 > O Teko está em desenvolvimento e é fornecido **sem garantia**, como diz a [AGPL 3.0](LICENSE) nas seções 15 e 16. Revise o que as IAs propõem antes de aprovar e use por sua conta e risco.
+> Roda local: banco e busca ficam na sua máquina. O que você manda no chat vai para o provedor de IA que você configurou, sob os termos dele.
 
 Backend TypeScript executado com `tsx`, sem etapa de build. Requer Node 22.5+ (`node:sqlite`).
 
@@ -92,7 +177,7 @@ Fale **"Teko"** (ou segure **⌥ Espaço**): o Teko transcreve no próprio Mac, 
 - **Microfone ligado/desligado**: botão de microfone na ilha, item "Microfone ligado" no menu da barra ou "Teko, desligar microfone". Desligado, o microfone fecha de verdade (o ponto laranja do macOS some) e nada abre ele, nem ⌥ Espaço, até você ligar de novo
 - Comandos que o app resolve na hora, sem IA (falando ou digitando na ilha): "Teko, abrir mapa neural", "Teko, farmar aura" (liga a aura), "Teko, brochar" (desliga), "Teko, ativar gestos" / "desativar gestos" e "Teko, autodestruir" (responde "Foi um prazer, senhor." e fecha o Teko)
 - **Abrir junto com o Mac**: no menu da barra. Ao abrir, o app sobe sozinho o servidor do Teko e a voz clonada (se estiver instalada) quando eles não estiverem rodando; logs em `data/logs/`. Ao sair, encerra só o que ele mesmo abriu
-- **Estalo de dedos** também chama: precisa ser um estalo agudo e sozinho, então voz, batida na mesa, digitação e estalos em ritmo (música) não disparam. Desliga em "Ligar com estalo de dedos" no menu da barra O estalo também liga a aura, que fica na tela (parada, girando devagar); juntar as mãos (palma com palma) desliga
+- **Estalo de dedos** também chama: precisa ser um estalo agudo e sozinho, então voz, batida na mesa, digitação e estalos em ritmo (música) não disparam. Desliga em "Ligar com estalo de dedos" no menu da barra. O estalo também liga a aura, que fica na tela (parada, girando devagar); juntar as mãos (palma com palma) desliga
 - "Teko, abre o Spotify": abre apps instalados pelo nome (Mac, Linux e Windows), sem aprovação, só o que estiver instalado; a resposta diz se ele viu o app abrir
 - **Mover a aura**: pinça com uma mão segura e arrasta; pinça com as duas mãos afastando ou aproximando troca entre 3 tamanhos (pequena, padrão, grande), com a câmera acompanhando. A posição fica salva; "Centralizar aura" no menu da barra volta pro meio
 - **Ilha no notch**: no topo da tela, colada no notch da câmera. Parada, some no notch; em conversa, cresce com o estado e a legenda; com o mouse em cima, abre Falar, Mapa, Parar, um campo pra pedir digitando e o gasto do dia. Sem notch, vira uma pílula pequena no topo. Liga e desliga no menu da barra
@@ -105,7 +190,7 @@ npm run voz                     # abre o app (ícone na barra de menu)
 ```
 
 - Transcrição local com whisper.cpp
-- Voz: a sua, clonada localmente (abaixo); sem ela, cai na voz masculina do macOS (`say`, Reed)
+- Voz: a sua, clonada localmente (abaixo); sem ela, a resposta aparece só em texto
 - Escuta do "Teko" liga/desliga no menu da barra ("Ativar falando \"Teko\""); desligada, o microfone só abre enquanto você segura o atalho
 - Com a escuta ligada o microfone fica aberto (o macOS mostra o ponto laranja). O áudio é processado no próprio Mac: um detector de volume recorta trechos curtos e o whisper local confere se começam com "Teko". Depois da ativação, só o texto transcrito da pergunta vai pro modelo de IA da fila (Gemini, Claude etc.)
 - Só vale como primeira palavra ("ei/oi Teko" também); enquanto o Teko fala, ele não se escuta
@@ -147,7 +232,7 @@ npm run cofu              # http://localhost:4790
 - A IA da lista roda num serviço separado (`COFU_SERVER_URL` e `COFU_SERVER_TOKEN` no `.env`); sem ele, o leitor simples monta a lista. O app nunca vê a chave da IA
 - Preços são estimativas da IA, não preços reais de mercado (isso é a fase 2)
 
-## O que já funciona
+## Recursos em detalhe
 
 - **Chat com roteamento por perfil** — `código`, `projeto/arquitetura`, `documentação`, `revisão`, `bug`, `caveman (econômico)`.
 - **Modo Caveman (Econômico)** — respostas telegráficas e ultra-densas que cortam até ~75% de tokens sem perder substância técnica.
@@ -208,7 +293,7 @@ apps/
 
 Os apps importam o orquestrador por subcaminho, por exemplo `@teko/ai/router`.
 
-Próximos espaços previstos: `packages/career-core`, `packages/finance-core`, `apps/teko-desktop`.
+Próximos espaços previstos: `packages/career-core`, `packages/finance-core`.
 
 ### Como o fallback decide
 
@@ -225,7 +310,7 @@ O cliente recebe eventos SSE (`attempt`, `delta`, `fallback`, `tool_call`, `tool
 
 ## Ferramentas no chat
 
-Com um projeto que tem caminho local, o modelo ganha seis ferramentas:
+Com um projeto que tem caminho local, o modelo ganha estas ferramentas (mais `open_app`, `undo_changes`, `use_skill` e `delegate_agent`, explicadas abaixo):
 
 | Ferramenta | Aprovação | O que faz |
 | --- | --- | --- |
@@ -342,7 +427,7 @@ Veja [como conectar os agentes e organizar o contexto](docs/CONTEXTO_UNIFICADO.m
 - Embeddings locais (Ollama) como segunda perna da busca, mantendo o FTS5 como fallback.
 - Regras de roteamento por intenção (detectar review/bug automaticamente).
 - Webhooks: bug criado → abre issue no GitHub.
-- Criptografia das chaves em repouso (hoje ficam no SQLite local).
+- Chaves no Chaveiro do sistema em vez do SQLite local (#145).
 - Diff visual antes de aprovar escrita/edição.
 
 ## Licença
@@ -353,7 +438,7 @@ O Teko é open source sob a **[AGPL 3.0](LICENSE)**. Criado por **Felipe Oliveir
 - ✅ Pode rodar pra você, pro seu time ou pra sua empresa
 - 📌 Toda cópia ou fork mantém o crédito ao autor e o aviso do [NOTICE](NOTICE)
 - 🔓 Se modificar e distribuir, ou oferecer como serviço online, o código tem que continuar aberto sob a AGPL
-- 🏷️ Os nomes **Teko**, **Teki**, **Teki Industries** e **Cofu** não vêm junto com o código: fork tem que ter outro nome (nada de "Teko Pro"). Veja [TRADEMARKS.md](TRADEMARKS.md)
+- 🏷️ Os nomes **Teko**, **Teki**, **Teki Industries** e **Cofu** não vêm junto com o código: fork tem que ter outro nome (nada de "Meu Teko"). Veja [TRADEMARKS.md](TRADEMARKS.md)
 - 💼 Quer usar num produto fechado ou vender sem abrir o código? Isso pede uma **licença comercial**. Fala com [@tekiidev](https://github.com/tekiidev)
 
 Contribuições são bem-vindas. Ao abrir um PR, você concorda que sua contribuição pode ser distribuída sob a AGPL 3.0 e sob a licença comercial do Teko.
